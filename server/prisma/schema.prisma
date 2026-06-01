@@ -1,0 +1,109 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id            String           @id @default(cuid())
+  name          String
+  email         String           @unique
+  createdAt     DateTime         @default(now())
+  accessToken   String?
+  refreshToken  String?
+  tokenExpiry   DateTime?
+  rules         TriageRule[]
+  decisions     TriageDecision[]
+  profile       UserProfile[]
+}
+
+model TriageRule {
+  id                    String           @id @default(cuid())
+  userId                String
+  user                  User             @relation(fields: [userId], references: [id])
+  trigger               String           // JSON string
+  action                String
+  priority              String           // T1 | T2 | T3 | T4
+  categoryLabel         String?          // T4 only — groups items in Browse panel
+  digestSummaryTemplate String
+  notes                 String?
+  source                String           // manual | agent
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  decisions             TriageDecision[]
+}
+
+model TriageDecision {
+  id              String      @id @default(cuid())
+  threadId        String
+  userId          String
+  user            User        @relation(fields: [userId], references: [id])
+  ruleId          String?
+  rule            TriageRule? @relation(fields: [ruleId], references: [id])
+  priority        String
+  digestSummary   String
+  decidedAt       DateTime    @default(now())
+  confirmedByUser Boolean     @default(false)
+  wasCorrect      Boolean?
+  archivedAt      DateTime?
+  userFlagged     Boolean     @default(false)
+
+  @@index([threadId])
+  @@index([userId, archivedAt])
+}
+
+model ThreadCache {
+  id            String          @id
+  userId        String
+  subject       String
+  sender        String
+  snippet       String
+  date          String
+  labelIds      String
+  toAddresses   String          @default("")
+  htmlBody      String?
+  plaintextBody String?
+  cachedAt      DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  messages      CachedMessage[]
+
+  @@index([userId])
+}
+
+model CachedMessage {
+  id            String      @id
+  threadId      String
+  thread        ThreadCache @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  userId        String
+  sender        String
+  toRecipients  String      @default("[]")
+  date          String
+  subject       String
+  snippet       String
+  htmlBody      String?
+  plaintextBody String?
+  isUnread      Boolean
+  labelIds      String      @default("[]")
+  position      Int
+  cachedAt      DateTime    @default(now())
+
+  @@index([threadId])
+  @@index([userId])
+}
+
+model UserProfile {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  key       String
+  value     String
+  @@unique([userId, key])
+}

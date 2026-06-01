@@ -1,0 +1,773 @@
+{
+  "user": {
+    "name": "Reginald NeoWilliams",
+    "email": "waregin88@gmail.com"
+  },
+  "profile": [
+    {
+      "key": "role",
+      "value": "Software engineer at JPMorgan Chase"
+    },
+    {
+      "key": "household_size",
+      "value": "5 adults"
+    },
+    {
+      "key": "primary_concern",
+      "value": "Never miss anything critically important"
+    },
+    {
+      "key": "context_notes",
+      "value": "Active crowdfunder. Multiple email addresses route to one inbox: waregin88 (primary), warebec (former primary, migrating away), reginald.a.z.neowilliams (professional/resume), katsnreg (shared with husband Kats, used for WPCU credit union). Monitors transactions near-daily via spreadsheet. Target: inbox under 10 most weeks. Uses Email OS as primary email client."
+    }
+  ],
+  "rules": [
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"contact@jenis.com\"}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Jeni's order confirmed: {subject}",
+      "categoryLabel": null,
+      "notes": "Order confirmation emails from contact@jenis.com. Separate from promotional emails (updates@jenis.com). T3 — glance and archive.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"subject_or_snippet_contains_any\",\"patterns\":[\"Your Mail Was Delivered\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "{subject}",
+      "categoryLabel": null,
+      "notes": "Daily or near-daily USPS Informed Delivery notifications. Subject line contains the date and is sufficient as the full summary. Glance and archive.",
+      "source": "agent"
+    },
+    {
+      "trigger": "{\"type\":\"subject_or_snippet_contains_any\",\"patterns\":[\"tracking number\",\"tracking #\",\"shipment\",\"your order has shipped\",\"on the way\",\"scheduled delivery\",\"estimated delivery\",\"out for delivery\",\"will arrive today\",\"arriving today\",\"arrives today\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Shipment from {retailer_or_sender} · Tracking: {tracking_number} · Delivery: {delivery_date} · {delivery_window}",
+      "categoryLabel": null,
+      "notes": "Tracking numbers may appear in subject or body. retailer_or_sender falls back to email sender name if no retailer is mentioned. Applies to any carrier or seller. If tracking number is not extractable, omit gracefully. Surface delivery window when available.",
+      "source": "agent"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"spotify.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Spotify",
+      "notes": "Policy updates and service notifications. T4 — content may affect app usage decisions, needs careful reading. Other Spotify email types handled when examples arrive.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"noreply@github.com\",\"subjectOrSnippetContainsAny\":[\"invited\"]}",
+      "action": "digest",
+      "priority": "T2",
+      "digestSummaryTemplate": "GitHub invite: {repository} from {inviter}",
+      "categoryLabel": null,
+      "notes": "Repository invitations. T2 — requires deliberate action (accept or decline). Other GitHub notification types handled by separate rules when examples arrive.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"quasirealhouse.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Cthulhu Dreamt",
+      "notes": "RPG announcement emails. T4 — user wants to investigate content. Rule added based on single example; may need refinement.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"noreply@medium.com\",\"subjectOrSnippetContainsAny\":[\"mentioned\"]}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Medium",
+      "notes": "Mention notifications on Medium. T4 — user wants to read the context. Comment notifications from same sender are T2 — add rule when example arrives.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"noreply@medium.com\",\"subjectOrSnippetContainsAny\":[\"stats\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Medium weekly stats for Rambling Reggie: {stats_summary}",
+      "categoryLabel": null,
+      "notes": "Weekly writer stats for Rambling Reggie Medium account. T3 — summary sufficient. Other Medium emails (mentions, comments) handled by separate rules when examples arrive.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"hello@postman.storyworth.com\",\"subjectOrSnippetContainsAny\":[\"Upcoming Storyworth\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "StoryWorth: this week Dad will be asked: {upcoming_question}",
+      "categoryLabel": null,
+      "notes": "Upcoming question previews from StoryWorth. Scoped to 'Upcoming Storyworth' subject to avoid catching other StoryWorth emails. T3 — summary of the upcoming question is sufficient.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"story@postman.storyworth.com\",\"subjectOrSnippetContainsAny\":[\"Roger shared\"]}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "StoryWorth — Dad",
+      "notes": "Stories written by Roger (Dad) shared via StoryWorth. T4 — user reads every story. Some stories may prompt followup actions (e.g. adding books to reading list) — use followup flag as needed.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"subject_or_snippet_contains_any\",\"patterns\":[\"take our survey\",\"share your feedback\",\"tell us what you think\",\"quick survey\",\"survey request\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Survey request from {sender}: {subject}",
+      "categoryLabel": null,
+      "notes": "Market research and opinion survey requests from retailers and services. T3 — glance and archive. Does NOT apply to BackerKit or Kickstarter surveys, which are pledge fulfillment surveys handled under crowdfunding rules.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"subject_or_snippet_contains_any\",\"patterns\":[\"Lynd Fruit Farm\",\"lyndfruitfarm\"]}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Lynd Fruit Farm",
+      "notes": "Local Columbus area farm market. T4 — user reads these. Time-sensitive event emails (honeycrisp apple picking season) may warrant T2 or T1 when that time of year comes — add rule when example arrives.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"guide.healthygamer.gg\"}",
+      "action": "digest",
+      "priority": "T2",
+      "digestSummaryTemplate": "Healthy Gamer Guide: {subject} — gift link included, followup required",
+      "categoryLabel": null,
+      "notes": "Purchase confirmation for Dr. K's Guide. T2 because email includes a gift link requiring followup action. Different sender from newsletter (hello@healthygamer.gg).",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"no-reply@amazon.com\",\"subjectOrSnippetContainsAny\":[\"subscription\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Amazon subscription update: {subject}",
+      "categoryLabel": null,
+      "notes": "Subscription cancellation and modification notices. T3 — informational. Other Amazon emails from no-reply@amazon.com handled by teaching agent when examples arrive.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"return@amazon.com\"}",
+      "action": "digest",
+      "priority": "T2",
+      "digestSummaryTemplate": "Amazon return reminder: {item} — return deadline {deadline}",
+      "categoryLabel": null,
+      "notes": "Return deadline reminders. T2 — action required before deadline. Note: Amazon sometimes issues refunds without requiring a return; investigate if a return reminder arrives for an already-refunded item.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"eat.grubhub.com\"}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Grubhub order confirmed: {restaurant} — ETA {eta}",
+      "categoryLabel": null,
+      "notes": "Order confirmations from Grubhub. Sender is orders@eat.grubhub.com. T3 — glance and archive. Summarizer should extract restaurant name and delivery ETA.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"toasttab.com\"}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Restaurant receipt: {restaurant} — {total}",
+      "categoryLabel": null,
+      "notes": "Restaurant receipts via Toast POS system. T3 — glance and archive. Summarizer should extract restaurant name and total amount.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"hello@good.store\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Good Store",
+      "notes": "Catch-all for Good Store promotional and loyalty emails. T4 — browse when convenient.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"hello@good.store\",\"subjectOrSnippetContainsAny\":[\"order\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Good Store order: {subject}",
+      "categoryLabel": null,
+      "notes": "Transactional emails — order confirmations and upcoming subscription notices. order appears in snippet for both types. T3 — glance and archive.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"chewy.com\"}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Chewy: {subject}",
+      "categoryLabel": null,
+      "notes": "Covers autoship delivered, autoship coming soon, and other Chewy notifications. T3 — glance and archive. Shipment tracking rule may also fire on delivery emails — Chewy-specific rule takes priority due to sender_domain match.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"help@kit.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Kit",
+      "notes": "Product announcements, feature updates, and platform news from Kit (formerly ConvertKit). T4 — read to stay current on platform capabilities for Rambling Reggie account.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"help@convertkit.com\"}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Kit weekly stats for Rambling Reggie: {open_rate} open rate, {click_rate} click rate, {subscriber_count} subscribers",
+      "categoryLabel": null,
+      "notes": "Weekly analytics report for Rambling Reggie Kit account. T3 — summary of numbers is sufficient. Sender is help@convertkit.com (legacy domain).",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"okendo.io\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Big Blanket",
+      "notes": "Product review requests via Okendo platform. Grouped under Big Blanket category since that's the retailer.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"noreply@steampowered.com\",\"subjectOrSnippetContainsAny\":[\"on sale\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Steam wishlist sale: {game_title_1} — {sale_price_1} ({discount_percentage_1} off); {game_title_2} — {sale_price_2} ({discount_percentage_2} off); [continue for all games on sale]",
+      "categoryLabel": null,
+      "notes": "Wishlist sale alerts only — scoped to 'on sale' in subject. List every game on sale with both sale price and discount percentage. If only one game, omit the semicolon list format. Other Steam emails handled by separate rules when encountered.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"mailer.humblebundle.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Humble Bundle",
+      "notes": "All Humble Bundle emails. Subject lines use creative marketing copy with no consistent pattern — sender domain is the only reliable trigger. Browse for relevant bundles.",
+      "source": "agent"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"newsletter@bad-dragon.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Bad Dragon",
+      "notes": "Adult toy retailer. Browse for new products and sales.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"cs@perksatwork.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Perks at Work",
+      "notes": "JPMorgan Chase employee benefit platform. Browse for relevant discounts.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"updates@jenis.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Jeni's Ice Cream",
+      "notes": "Ice cream retailer. Browse for new flavors and promotions. Use followup flag when placing an order.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"snuggle@e.bigblanket.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Big Blanket",
+      "notes": "Oversized blanket retailer. Note: promo code rule (T2) takes priority if email contains a code.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"hello@squishable.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Squishable",
+      "notes": "Plush toy retailer. Browse for new products.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"live.patreon.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Patreon Live",
+      "notes": "Live stream notifications from any Patreon creator. Currently not of primary interest. Can be upgraded or taught to specific creators if interest changes.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"ellasarcanumminis@creator.patreon.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Ella's Arcanum Minis",
+      "notes": "Miniature sculpting creator. Read when convenient.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"darkmatter2525@creator.patreon.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "DarkMatter2525",
+      "notes": "Atheist/philosophy YouTube creator. Read when convenient.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"thelatestkate@creator.patreon.com\"}",
+      "action": "digest",
+      "priority": "T2",
+      "digestSummaryTemplate": "The Latest Kate (Patreon): {subject} — download artwork",
+      "categoryLabel": null,
+      "notes": "Art/illustration creator. T2 because user downloads a copy of all artwork for personal use — requires deliberate action per email.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"f.stanmail.io\",\"subjectOrSnippetContainsAny\":[\"Arlan\"]}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Arlan Hamilton",
+      "notes": "Newsletter emails from Arlan Hamilton via stanmail.io mailing platform. subjectOrSnippetContainsAny 'Arlan' added as guard since stanmail.io might be used by other senders.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"arlanhamilton@gmail.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Arlan Hamilton",
+      "notes": "Direct newsletter emails from Arlan Hamilton's personal Gmail. Promotional/entrepreneurship content. Same category as Skool community and stanmail.io newsletter.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"noreply@skool.com\",\"subjectOrSnippetContainsAny\":[\"Nicolas Cole\",\"Ship 30 for 30\",\"Ghostwriters Anonymous\",\"Start Writing Online\"]}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Premium Ghostwriting",
+      "notes": "Covers Ship 30 for 30, Ghostwriters Anonymous, Start Writing Online — Nicolas Cole's communities and partner communities. Some emails filtered at Gmail level. T4 — user opens and reads these.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"noreply@skool.com\",\"subjectOrSnippetContainsAny\":[\"Your First $5k Club\"]}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Arlan Hamilton",
+      "notes": "Matches Your First $5k Club w/ARLAN community notifications via Skool. Community name used as trigger rather than person name. Additional Arlan communities can be added to patterns list. Skool emails matching neither community fall to manual triage.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"inaturalist.org\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "iNaturalist",
+      "notes": "Biodiversity/nature observation platform. Read when convenient.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"strawberrycomics.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Strawberry Comics",
+      "notes": "Monthly bulletin — site updates, awards, community news. Read when convenient.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"ourcityoursay.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Our City Our Say",
+      "notes": "Local civic org. Default T4. Signature collection requests may warrant T2 — teach agent when encountered.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"honestyforohioeducation.org\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Honesty for Ohio Education",
+      "notes": "Local education advocacy newsletter. Read when convenient.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"subject_or_snippet_contains_any\",\"patterns\":[\"Logic of Science\"]}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Logic of Science",
+      "notes": "Science/climate blog. Triggered on content rather than sender — arrives via WordPress comment-reply infrastructure. Future: match on mailing list header instead. Other WordPress comment-reply emails not covered.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"wwwrise.org\"}",
+      "action": "digest",
+      "priority": "T1",
+      "digestSummaryTemplate": "WWW Rise: {subject}",
+      "categoryLabel": null,
+      "notes": "Tech worker organizing. T1 — calls to action are time-sensitive (solidarity calls, organizing moments). User may not always attend but wants immediate awareness.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"aclu.org\"}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "ACLU: {subject}",
+      "categoryLabel": null,
+      "notes": "Catches all ACLU addresses. Default T3. Action emails with take-action buttons may warrant T2 — teach agent when encountered. Fundraising T3, case updates informational.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"werehere@mail.beehiiv.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "We're Here",
+      "notes": "Personal/reflective newsletter with curated internet content. T4 — full content engagement required: clicking through to read online and opening tabs for curated content.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"hello@healthygamer.gg\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Healthy Gamer",
+      "notes": "Dr. K newsletter. Read when convenient. Note: support@guide.healthygamer.gg is a separate sender for purchase confirmations.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"info.clearerthinking.net\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Clearer Thinking",
+      "notes": "Mix of newsletter issues, workshop invitations, and study participation requests. All T4 — use followup flag if action needed.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"matt@whatthefuckjusthappenedtoday.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "WTFJHT",
+      "notes": "Daily political news digest. Current primary source for staying informed on current events. T4 — opens with 'Today in one sentence' but sentence is lengthy; full content needed.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"address\",\"toAddress\":\"warebec@gmail.com\"}",
+      "action": "digest",
+      "priority": "T2",
+      "digestSummaryTemplate": "warebec email: {subject} from {sender} — migration needed",
+      "categoryLabel": null,
+      "notes": "warebec is former primary address being wound down. Flag all emails to this address for sender migration outreach to waregin88.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"subject_or_snippet_contains_any\",\"patterns\":[\"promo code\",\"discount code\"]}",
+      "action": "digest",
+      "priority": "T2",
+      "digestSummaryTemplate": "Promo code from {sender}: {code} — expires {expiry} — add to promo tracking system",
+      "categoryLabel": null,
+      "notes": "All promo codes (expiring or not) should be logged in promo tracking system (not yet built). Email stays in inbox until code is logged or expires. T2 — action required (log the code).",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"no-reply@s.backerkit.com\",\"subjectOrSnippetContainsAny\":[\"Survey Confirmation\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "BackerKit survey confirmed: {campaign} — {financial_summary}",
+      "categoryLabel": null,
+      "notes": "Survey completion receipt. T3 — glance and archive. financial_summary should capture whatever is most relevant: order total if available, or credit remaining and shipping status if not. Example: 'Cats Among The Cosmos — credit remaining $0.00, shipping charged later'.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"no-reply@s.backerkit.com\",\"subjectOrSnippetContainsAny\":[\"Response Needed\"]}",
+      "action": "digest",
+      "priority": "T2",
+      "digestSummaryTemplate": "BackerKit survey needed: {campaign} — complete to receive your rewards",
+      "categoryLabel": null,
+      "notes": "Survey required to receive crowdfunding rewards. T2 — action required. Distinct from market research surveys which are T3.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"o.backerkit.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "BackerKit Pre-launch",
+      "notes": "Pre-launch and discovery notifications from BackerKit. Sender format is creator+[variable]@o.backerkit.com — domain match catches all regardless of campaign. Typically from creators already followed. T4 — user wants to read content and possibly click through to back the campaign.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"backerkit.com\",\"subjectOrSnippetContainsAny\":[\"digital content\"]}",
+      "action": "digest",
+      "priority": "T2",
+      "digestSummaryTemplate": "BackerKit digital content available: {campaign} — download and add to reading list",
+      "categoryLabel": null,
+      "notes": "Any new digital content email is T2. Generate action item: download content and add to reading list.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"kickstarter.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "Kickstarter Updates",
+      "notes": "Same reading order rules as BackerKit. Full content must be accessible. Escalate to T2 if survey, pledge change, address confirmation, or download required.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"s.backerkit.com\"}",
+      "action": "digest",
+      "priority": "T4",
+      "digestSummaryTemplate": "",
+      "categoryLabel": "BackerKit Updates",
+      "notes": "Campaign update emails from BackerKit. Read in chronological order within campaign. When creator has multiple campaigns, read all their updates chronologically across campaigns. Full email content must be accessible — digest is navigation aid only. If update contains survey, pledge change, address confirmation, or download: escalate to T2.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"self_sent\",\"subjectOrSnippetContainsAny\":[\"luckyBackup\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Backup: OK {date}",
+      "categoryLabel": null,
+      "notes": "Daily at midnight. Errors=0: T3 one-liner. Errors>0 first day: T2, note self-resolution possible. Errors>0 second consecutive day: T2 + action item. Missing first day: T1 note. Missing second consecutive day: T1 + action item. Agent must track last N days of outcomes.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"DoNotReplyVR@dps.ohio.gov\"}",
+      "action": "digest",
+      "priority": "T2",
+      "digestSummaryTemplate": "Ohio BMV: vehicle registration renewal due for {vehicle} — renew by {deadline}",
+      "categoryLabel": null,
+      "notes": "Ohio BMV vehicle registration renewal reminder. T2 — specific action required (renew online or in person) but ~2 months lead time given. Two vehicles currently registered. Email arrives via BCC so toRecipients shows No-Reply@dps.ohio.gov — must trigger on sender, not address. If vehicle is no longer owned, disregard.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"subject_or_snippet_contains_any\",\"patterns\":[\"appointment reminder\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Appointment reminder: {appointment_details}",
+      "categoryLabel": null,
+      "notes": "Catches appointment reminders from any sender — Aetna coaching, medical, dental, etc. T3 — informational since appointments are already in calendar. Summarizer should extract date, time, provider name.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"aep-email.com\",\"subjectOrSnippetContainsAny\":[\"restored\"]}",
+      "action": "digest",
+      "priority": "T1",
+      "digestSummaryTemplate": "AEP Ohio service update: {subject}",
+      "categoryLabel": null,
+      "notes": "Power restoration notice. T1 — same panel as outage alert for easy correlation. Rule designed with mobile use in mind. Do not downgrade to T2.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"aep-email.com\",\"subjectOrSnippetContainsAny\":[\"outage\"]}",
+      "action": "digest",
+      "priority": "T1",
+      "digestSummaryTemplate": "AEP Ohio outage alert: {subject}",
+      "categoryLabel": null,
+      "notes": "Power outage notification. T1 — user wants to know immediately, particularly to see estimated restoration time. Sender domain aep-email.com distinct from aepohio.com used for billing.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"aepohio.com\",\"subjectOrSnippetContainsAny\":[\"account\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "AEP Ohio: {subject}",
+      "categoryLabel": null,
+      "notes": "Account and service notices only. Marketing emails unsubscribed — if any slip through, route to manual triage. Sender domain aepohio.com is for billing/account notices only.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"localwasteservices.com\"}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "LWS: {subject}",
+      "categoryLabel": null,
+      "notes": "Holiday delay notices are predictable but should still be surfaced. Glance and archive.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"atlassian.com\"}",
+      "action": "digest",
+      "priority": "T2",
+      "digestSummaryTemplate": "Atlassian: {subject}",
+      "categoryLabel": null,
+      "notes": "Reginald intends to abandon Atlassian tools. Data export pending. Flag all Atlassian emails until account is closed.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"subject_or_snippet_contains_any\",\"patterns\":[\"security alert\"]}",
+      "action": "digest",
+      "priority": "T1",
+      "digestSummaryTemplate": "Security alert from {sender}: {action}",
+      "categoryLabel": null,
+      "notes": "Always T1 regardless of sender. Describe specific action in digest.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"google.com\",\"subjectOrSnippetContainsAny\":[\"security alert\"]}",
+      "action": "digest",
+      "priority": "T1",
+      "digestSummaryTemplate": "Google security alert: {action}",
+      "categoryLabel": null,
+      "notes": "Always T1. Agent cannot know if event was expected. User self-dismisses if routine. Never suppress.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"affirm-billing@shop.affirm.com\",\"subjectOrSnippetContainsAny\":[\"autopay\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Shop Pay AutoPay: {amount} due {date}",
+      "categoryLabel": null,
+      "notes": "Shop Pay autopay reminders via Affirm billing infrastructure. Scoped to exact billing sender so other Affirm or Shop Pay emails fall to manual triage. All expected payments — T3 glance and archive.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender\",\"sender\":\"amfamonlinebilling@amfam.com\",\"subjectOrSnippetContainsAny\":[\"payment\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "AmFam Insurance payment processed: {amount} — {payment_type_or_description}",
+      "categoryLabel": null,
+      "notes": "American Family Insurance umbrella policy payment confirmations. Scoped to amfamonlinebilling@amfam.com so personal emails from insurance agent (different sender) fall to manual triage. Amount and description together identify insurance type.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"info.wpcu.coop\"}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "WPCU eNewsletter: {subject}",
+      "categoryLabel": null,
+      "notes": "Monthly WPCU newsletter. Sent to katsnreg address. Glance and archive.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"e.savvymoney.com\"}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "SavvyMoney credit rating update for Kats: {subject}",
+      "categoryLabel": null,
+      "notes": "Credit rating update for Kats (Joshua), whose name is on the WPCU membership. Sent to katsnreg address. Glance and archive.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"wpcu.coop\",\"subjectOrSnippetContainsAny\":[\"transfer\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "WPCU transfer complete: {subject}",
+      "categoryLabel": null,
+      "notes": "Recurring scheduled transfer confirmations. Glance and archive. Sent to katsnreg address.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"wpcu.coop\",\"subjectOrSnippetContainsAny\":[\"withdrawal\"]}",
+      "action": "digest",
+      "priority": "T1",
+      "digestSummaryTemplate": "WPCU large withdrawal alert: {subject}",
+      "categoryLabel": null,
+      "notes": "Fraud detection — T1 even when transaction is expected. Sent to katsnreg address.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"paypal.com\",\"subjectOrSnippetContainsAny\":[\"payment is due\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "PayPal payment due: {subject}",
+      "categoryLabel": null,
+      "notes": "Pay Monthly and Pay Later payment reminders. Autopays — no action required. If action is needed, use followup flow.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"paypal.com\",\"subjectOrSnippetContainsAny\":[\"received your\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "PayPal sent: {amount} to {recipient}",
+      "categoryLabel": null,
+      "notes": "Catches 'We received your Pay Monthly payment' and similar outgoing payment confirmations. Routine unless amount > $100 or recipient is unrecognized.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"paypal.com\",\"subjectOrSnippetContainsAny\":[\"sent you\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "PayPal received: {amount} from {sender} — transfer to WPCU checking likely needed",
+      "categoryLabel": null,
+      "notes": "Escalate to T1 if sender is unknown OR amount >= $50. Known sender Jesse Neubauer is routine carpool cost-sharing. PayPal subject lines are counterintuitive: money received emails say 'sent you' (e.g. 'Jesse sent you $10.40'). Do NOT match on 'received'.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"wpcu.coop\",\"subjectOrSnippetContainsAny\":[\"statement\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "WPCU statement available (checking, savings, HELOC)",
+      "categoryLabel": null,
+      "notes": "Multi-account statement. Reginald monitors these accounts regularly. Glance and archive.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"subject_or_snippet_contains_any\",\"patterns\":[\"mortgage\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Mortgage statement: balance {balance}, payment {payment}",
+      "categoryLabel": null,
+      "notes": "Glance and archive. Show numbers.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"chase.com\",\"subjectOrSnippetContainsAny\":[\"auto\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Chase Subaru loan statement: balance {balance}, payment {payment}",
+      "categoryLabel": null,
+      "notes": "Glance and archive. Show numbers.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"paypal.com\",\"subjectOrSnippetContainsAll\":[\"statement\",\"PayPal Credit\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "PayPal Credit statement: balance {balance}, minimum {minimum}, due {dueDate}",
+      "categoryLabel": null,
+      "notes": "In credit counseling. Treat same as Chase 0889.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"carecredit.com\"}",
+      "action": "digest",
+      "priority": "T2",
+      "digestSummaryTemplate": "Care Credit statement: balance {balance}, minimum {minimum}, due {dueDate}",
+      "categoryLabel": null,
+      "notes": "Used as reminder to log in and adjust payment amount. Surface prominently.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"chase.com\",\"subjectOrSnippetContainsAny\":[\"2341\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Chase checking 2341 statement available",
+      "categoryLabel": null,
+      "notes": "Dormant account with $50 balance. Reflexive confirmation only — no numbers need surfacing.",
+      "source": "manual"
+    },
+    {
+      "trigger": "{\"type\":\"sender_domain\",\"domain\":\"chase.com\",\"subjectOrSnippetContainsAny\":[\"0889\"]}",
+      "action": "digest",
+      "priority": "T3",
+      "digestSummaryTemplate": "Chase credit card 0889 statement: balance {balance}, minimum {minimum}, due {dueDate}",
+      "categoryLabel": null,
+      "notes": "In credit counseling — no new charges expected. If minimum is higher than prior month or new charges appear, escalate to T2.",
+      "source": "manual"
+    }
+  ]
+}
