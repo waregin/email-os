@@ -25,32 +25,34 @@ export async function upsertCachedMessages(
   const validMessages = messages.filter((m) => m.id);
   if (validMessages.length === 0) return;
   const now = new Date();
-  await prisma.cachedMessage.deleteMany({ where: { threadId } });
-  await prisma.cachedMessage.createMany({
-    data: validMessages.map((msg, position) => {
-      const headers = msg.payload?.headers ?? [];
-      const h = makeHeaderGetter(headers);
-      const body = msg.payload ? extractBody(msg.payload) : { html: null, plain: null };
-      const msgLabelIds = msg.labelIds ?? [];
-      const toHeader = h('To');
-      return {
-        id: msg.id!,
-        threadId,
-        userId,
-        sender: h('From'),
-        toRecipients: JSON.stringify(toHeader ? toHeader.split(',').map((s) => s.trim()) : []),
-        date: h('Date'),
-        subject: h('Subject') || '(no subject)',
-        snippet: msg.snippet ?? '',
-        htmlBody: body.html,
-        plaintextBody: body.plain,
-        isUnread: msgLabelIds.includes('UNREAD'),
-        labelIds: JSON.stringify(msgLabelIds),
-        position,
-        cachedAt: now,
-      };
+  await prisma.$transaction([
+    prisma.cachedMessage.deleteMany({ where: { threadId } }),
+    prisma.cachedMessage.createMany({
+      data: validMessages.map((msg, position) => {
+        const headers = msg.payload?.headers ?? [];
+        const h = makeHeaderGetter(headers);
+        const body = msg.payload ? extractBody(msg.payload) : { html: null, plain: null };
+        const msgLabelIds = msg.labelIds ?? [];
+        const toHeader = h('To');
+        return {
+          id: msg.id!,
+          threadId,
+          userId,
+          sender: h('From'),
+          toRecipients: JSON.stringify(toHeader ? toHeader.split(',').map((s) => s.trim()) : []),
+          date: h('Date'),
+          subject: h('Subject') || '(no subject)',
+          snippet: msg.snippet ?? '',
+          htmlBody: body.html,
+          plaintextBody: body.plain,
+          isUnread: msgLabelIds.includes('UNREAD'),
+          labelIds: JSON.stringify(msgLabelIds),
+          position,
+          cachedAt: now,
+        };
+      }),
     }),
-  });
+  ]);
 }
 
 export function extractBody(payload: gmail_v1.Schema$MessagePart): { html: string | null; plain: string | null } {

@@ -34,7 +34,7 @@ Bugs first, then complexity/structural cleanup. Within each group, ordered by us
 **File:** `server/src/engine.ts:28–54`  
 **Impact:** A crash or process kill between `deleteMany` and `createMany` permanently deletes cached messages for that thread. Low probability given SQLite is local, but silent data loss when it happens.  
 **Fix:** Wrap both operations in a `prisma.$transaction`.  
-**Status:** [ ] Open
+**Status:** [x] Done
 
 ---
 
@@ -110,7 +110,7 @@ Bugs first, then complexity/structural cleanup. Within each group, ordered by us
 | B1 | `describeTrigger` stale trigger types | Done |
 | B2 | Stale closure in TeachPanel auto-close | Done |
 | B3 | Favicon doesn't reset at zero unread | Done |
-| B4 | Non-atomic `upsertCachedMessages` | Open |
+| B4 | Non-atomic `upsertCachedMessages` | Done |
 | S2 | Duplicated Gmail client setup | Open |
 | S3 | Duplicated cache resolution logic | Open |
 | S4 | Extra API call per decided thread | Open |
