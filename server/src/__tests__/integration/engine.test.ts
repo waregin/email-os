@@ -105,20 +105,47 @@ describe('runTriagePass', () => {
     expect(result.unmatched).toBe(2);
   });
 
-  it('skips already-decided threads', async () => {
+  it('backfills lastMessageId for a legacy decision that has none', async () => {
     const user = await createTestUser();
-    await prisma.triageDecision.create({
-      data: { threadId: 'decided-th', userId: user.id, priority: 'T2', digestSummary: 'x' },
+    await createTestRule(user.id, { trigger: { type: 'sender_domain', domain: 'acme.com' }, priority: 'T2' });
+    const legacy = await prisma.triageDecision.create({
+      data: { threadId: 'legacy-th', userId: user.id, priority: 'T2', digestSummary: 'old' },
     });
 
     mockThreadsList.mockResolvedValueOnce({
-      data: { threads: [{ id: 'decided-th', snippet: 'x' }], nextPageToken: null },
+      data: { threads: [{ id: 'legacy-th', snippet: 'x' }], nextPageToken: null },
     });
+    mockThreadsGet.mockResolvedValueOnce(makeGmailThread('legacy-th', 'Legacy Thread', 'billing@acme.com'));
 
     const result = await runTriagePass(user.id);
-    expect(result.fetched).toBe(1);
-    expect(result.processed).toBe(0);
-    expect(mockThreadsGet).not.toHaveBeenCalled();
+    expect(result.processed).toBe(1);
+
+    // Updated in place — no new decision row created
+    const decisions = await prisma.triageDecision.findMany({ where: { threadId: 'legacy-th', userId: user.id } });
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]!.id).toBe(legacy.id);
+    expect(decisions[0]!.lastMessageId).toBe('msg-legacy-th');
+    expect(decisions[0]!.archivedAt).toBeNull();
+  });
+
+  it('backfills lastMessageId for a legacy decision when no rule matches', async () => {
+    const user = await createTestUser();
+    const legacy = await prisma.triageDecision.create({
+      data: { threadId: 'legacy-unmatched-th', userId: user.id, priority: 'T2', digestSummary: 'old' },
+    });
+
+    mockThreadsList.mockResolvedValueOnce({
+      data: { threads: [{ id: 'legacy-unmatched-th', snippet: 'x' }], nextPageToken: null },
+    });
+    mockThreadsGet.mockResolvedValueOnce(makeGmailThread('legacy-unmatched-th', 'Legacy Thread', 'nobody@unmatched.com'));
+
+    const result = await runTriagePass(user.id);
+    expect(result.processed).toBe(1);
+    expect(result.unmatched).toBe(1);
+
+    const decision = await prisma.triageDecision.findUnique({ where: { id: legacy.id } });
+    expect(decision!.lastMessageId).toBe('msg-legacy-unmatched-th');
+    expect(decision!.archivedAt).toBeNull();
   });
 
   it('skips already-decided thread when lastMessageId has not changed', async () => {
