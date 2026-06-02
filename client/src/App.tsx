@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from './api';
 import type { Thread, DecisionWithThread, MatchingThread } from './api';
 import { ThreadDetail } from './components/ThreadDetail';
@@ -240,6 +240,11 @@ function MainApp() {
     }
   }
 
+  const handleTeachClose = useCallback(() => setTeachThread(null), []);
+  const handleDecisionsRefresh = useCallback(() => {
+    api.getDecisions().then((d) => setDecisions(dedupeDecisions(d))).catch(() => {});
+  }, []);
+
   const decidedThreadIds = new Set(
     [...decisions.T1, ...decisions.T2, ...decisions.T3, ...decisions.T4].map((d) => d.threadId),
   );
@@ -314,8 +319,8 @@ function MainApp() {
 
       <TeachPanel
         thread={teachThread}
-        onClose={() => setTeachThread(null)}
-        onDecisionsRefresh={() => api.getDecisions().then((d) => setDecisions(dedupeDecisions(d))).catch(() => {})}
+        onClose={handleTeachClose}
+        onDecisionsRefresh={handleDecisionsRefresh}
       />
     </div>
   );
@@ -391,7 +396,7 @@ function TeachPanel({
     if (rulePhase !== 'done') return;
     const id = setTimeout(() => { onDecisionsRefresh(); onClose(); }, 2000);
     return () => clearTimeout(id);
-  }, [rulePhase]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rulePhase, onDecisionsRefresh, onClose]);
 
   async function sendText(text: string) {
     if (loading || !thread) return;
