@@ -128,11 +128,26 @@ export async function runTriagePass(userId: string): Promise<{ fetched: number; 
   for (const raw of rawThreads) {
     if (!raw.id) continue;
 
-    // Skip if already decided
+    // Skip if already decided and no new message has arrived since
     const existing = await prisma.triageDecision.findFirst({
-      where: { threadId: raw.id, userId },
+      where: { threadId: raw.id, userId, archivedAt: null },
+      orderBy: { decidedAt: 'desc' },
     });
-    if (existing) continue;
+    let newMessageArrived = false;
+    if (existing) {
+      if (existing.lastMessageId) {
+        const threadDetail = await gmail.users.threads.get({
+          userId: 'me',
+          id: raw.id,
+          format: 'minimal',
+        });
+        const messages = threadDetail.data.messages ?? [];
+        const currentLastId = messages[messages.length - 1]?.id;
+        if (!currentLastId || currentLastId === existing.lastMessageId) continue;
+        newMessageArrived = true;
+      }
+      // If no lastMessageId: fall through to re-evaluate and update the decision in place
+    }
 
     processed++;
 
@@ -149,6 +164,7 @@ export async function runTriagePass(userId: string): Promise<{ fetched: number; 
     let toAddresses: string[];
     let htmlBody: string | null;
     let plaintextBody: string | null;
+    let lastMessageId: string | null;
 
     if (stale) {
       const detail = await gmail.users.threads.get({
@@ -173,6 +189,7 @@ export async function runTriagePass(userId: string): Promise<{ fetched: number; 
       const body = last?.payload ? extractBody(last.payload) : { html: null, plain: null };
       htmlBody = body.html;
       plaintextBody = body.plain;
+      lastMessageId = last?.id ?? null;
 
       await prisma.threadCache.upsert({
         where: { id: raw.id },
@@ -189,6 +206,11 @@ export async function runTriagePass(userId: string): Promise<{ fetched: number; 
       toAddresses = cached.toAddresses ? (JSON.parse(cached.toAddresses) as string[]) : [];
       htmlBody = cached.htmlBody ?? null;
       plaintextBody = cached.plaintextBody ?? null;
+      const lastMsg = await prisma.cachedMessage.findFirst({
+        where: { threadId: raw.id },
+        orderBy: { position: 'desc' },
+      });
+      lastMessageId = lastMsg?.id ?? null;
     }
 
     const senderAddress = extractAddress(sender);
@@ -219,19 +241,49 @@ export async function runTriagePass(userId: string): Promise<{ fetched: number; 
         htmlBody,
       });
 
-      await prisma.triageDecision.create({
-        data: {
-          threadId: raw.id,
-          userId,
-          ruleId: matchedRule.id,
-          priority: matchedRule.priority,
-          digestSummary,
-        },
-      });
+      if (existing && !existing.lastMessageId) {
+        // Update in place: backfill lastMessageId and refresh decision fields
+        await prisma.triageDecision.update({
+          where: { id: existing.id },
+          data: { ruleId: matchedRule.id, priority: matchedRule.priority, digestSummary, lastMessageId },
+        });
+      } else {
+        if (newMessageArrived && existing) {
+          // Archive the stale decision before creating the replacement
+          await prisma.triageDecision.update({
+            where: { id: existing.id },
+            data: { archivedAt: new Date() },
+          });
+        }
+        await prisma.triageDecision.create({
+          data: {
+            threadId: raw.id,
+            userId,
+            ruleId: matchedRule.id,
+            priority: matchedRule.priority,
+            digestSummary,
+            lastMessageId,
+          },
+        });
+      }
       matched++;
 
       await new Promise(resolve => setTimeout(resolve, 100));
     } else {
+      if (existing && !existing.lastMessageId) {
+        // Thread no longer matches any rule — archive the stale decision
+        await prisma.triageDecision.update({
+          where: { id: existing.id },
+          data: { archivedAt: new Date() },
+        });
+      } else if (newMessageArrived && existing) {
+        // No rule matched — update the lastMessageId baseline without archiving so the
+        // decision stays visible in the UI and the next pass doesn't re-trigger
+        await prisma.triageDecision.update({
+          where: { id: existing.id },
+          data: { lastMessageId },
+        });
+      }
       unmatched++;
     }
   }
