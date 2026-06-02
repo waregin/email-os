@@ -58,8 +58,8 @@ Bugs first, then complexity/structural cleanup. Within each group, ordered by us
 ### S3 — Duplicated cache resolution logic in `engine.ts` and `agent.ts`
 **Files:** `server/src/engine.ts:155–214`, `server/src/agent.ts:285–311`  
 **Impact:** The stale-check → conditional Gmail fetch → populate local vars pattern is written twice. `agent.ts` has a `fetchAndCacheThread` helper for the fetch half, but `engine.ts` doesn't use it.  
-**Fix:** Extracted `resolveThreadMetadata` into `engine.ts` (handles both stale and fresh paths). `agent.ts` now imports and uses it; local `fetchAndCacheThread` removed.  
-**Status:** [ ] Open
+**Fix:** Create `utils/thread-cache.ts` with all thread-processing helpers (`extractAddress`, `extractDomain`, `extractBody`, `upsertCachedMessages`, `resolveThreadMetadata`). `engine.ts` becomes pure orchestration. `agent.ts`, `gmail.ts`, and the unit test updated to import from the new module; `fetchAndCacheThread` removed.  
+**Status:** [x] Done
 
 ---
 
@@ -112,7 +112,7 @@ Bugs first, then complexity/structural cleanup. Within each group, ordered by us
 | B3 | Favicon doesn't reset at zero unread | Done |
 | B4 | Non-atomic `upsertCachedMessages` | Done |
 | S2 | Duplicated Gmail client setup | Done |
-| S3 | Duplicated cache resolution logic | Open |
+| S3 | Duplicated cache resolution logic | Done |
 | S4 | Extra API call per decided thread | Open |
 | S6 | Unexplained 100ms sleep | Open |
 | S7 | Single-user scheduler flag | Open |

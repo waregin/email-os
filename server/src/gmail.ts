@@ -3,7 +3,7 @@ import { google } from 'googleapis';
 import type { gmail_v1 } from 'googleapis';
 import { getAuthenticatedClient } from './middleware';
 import { prisma } from './db';
-import { extractBody } from './engine';
+import { extractBody } from './utils/thread-cache';
 import { CACHE_TTL_MS } from './constants';
 import { makeHeaderGetter } from './utils/gmail';
 

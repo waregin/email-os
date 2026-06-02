@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractAddress, extractDomain, extractBody } from '../../engine';
+import { extractAddress, extractDomain, extractBody } from '../../utils/thread-cache';
 
 describe('extractAddress', () => {
   it('parses "Name <email>" format', () => {
