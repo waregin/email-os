@@ -15,14 +15,9 @@ function updateFavicon(count: number): void {
   const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
   if (!link) return;
 
-  const label = count < 100 ? String(count) : '100+';
-  const textLength = label.length == 1 ? 15 : label.length == 2 ? 20 : 30;
-
-  if (!label) {
-    link.type = 'image/svg+xml';
-    link.href = '/favicon.svg';
-    return;
-  }
+  const n = Math.max(0, count);
+  const label = n < 100 ? String(n) : '100+';
+  const textLength = label.length === 1 ? 15 : label.length === 2 ? 20 : 30;
 
   const fontSize = 23;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">

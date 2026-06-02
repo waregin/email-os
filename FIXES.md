@@ -18,15 +18,15 @@ Bugs first, then complexity/structural cleanup. Within each group, ordered by us
 **File:** `client/src/App.tsx:391–394`  
 **Impact:** After a rule is applied, the 2-second auto-close timer may call the stale `onDecisionsRefresh` or `onClose` callbacks captured at effect-registration time, potentially skipping the decisions refresh.  
 **Fix:** Wrap `onDecisionsRefresh` and `onClose` in `useCallback` in `MainApp`, then remove the `eslint-disable-line` suppression and add them to the dependency array.  
-**Status:** [ ] Open
+**Status:** [x] Done
 
 ---
 
 ### B3 — `updateFavicon` never resets to plain icon at zero unread
 **File:** `client/src/App.tsx:19–26`  
 **Impact:** When all emails are read, the tab favicon keeps the last badge number rather than reverting to the plain envelope icon.  
-**Fix:** Change the guard to `if (count === 0)` and return the plain favicon path early.  
-**Status:** [ ] Open
+**Fix:** Remove the dead-code guard entirely. Clamp `count` to zero via `Math.max(0, count)` to handle negatives; `0` displays as a badge. Fix `==` to `===` while here.  
+**Status:** [x] Done
 
 ---
 
@@ -108,8 +108,8 @@ Bugs first, then complexity/structural cleanup. Within each group, ordered by us
 | ID | Description | Status |
 |----|-------------|--------|
 | B1 | `describeTrigger` stale trigger types | Done |
-| B2 | Stale closure in TeachPanel auto-close | Open |
-| B3 | Favicon doesn't reset at zero unread | Open |
+| B2 | Stale closure in TeachPanel auto-close | Done |
+| B3 | Favicon doesn't reset at zero unread | Done |
 | B4 | Non-atomic `upsertCachedMessages` | Open |
 | S2 | Duplicated Gmail client setup | Open |
 | S3 | Duplicated cache resolution logic | Open |
