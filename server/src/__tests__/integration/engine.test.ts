@@ -121,6 +121,81 @@ describe('runTriagePass', () => {
     expect(mockThreadsGet).not.toHaveBeenCalled();
   });
 
+  it('skips already-decided thread when lastMessageId has not changed', async () => {
+    const user = await createTestUser();
+    await prisma.triageDecision.create({
+      data: { threadId: 'decided-th', userId: user.id, priority: 'T2', digestSummary: 'x', lastMessageId: 'msg-original' },
+    });
+
+    mockThreadsList.mockResolvedValueOnce({
+      data: { threads: [{ id: 'decided-th', snippet: 'x' }], nextPageToken: null },
+    });
+    mockThreadsGet.mockResolvedValueOnce({
+      data: { messages: [{ id: 'msg-original' }] },
+    });
+
+    const result = await runTriagePass(user.id);
+    expect(result.fetched).toBe(1);
+    expect(result.processed).toBe(0);
+    expect(mockThreadsGet).toHaveBeenCalledOnce();
+  });
+
+  it('re-triages thread and archives old decision when a new message has arrived', async () => {
+    const user = await createTestUser();
+    await createTestRule(user.id, { trigger: { type: 'sender_domain', domain: 'acme.com' }, priority: 'T1' });
+    const oldDecision = await prisma.triageDecision.create({
+      data: { threadId: 'active-th', userId: user.id, priority: 'T1', digestSummary: 'old', lastMessageId: 'msg-old' },
+    });
+
+    mockThreadsList.mockResolvedValueOnce({
+      data: { threads: [{ id: 'active-th', snippet: 'new snippet' }], nextPageToken: null },
+    });
+    // First call: minimal fetch to detect new message
+    mockThreadsGet.mockResolvedValueOnce({
+      data: { messages: [{ id: 'msg-old' }, { id: 'msg-new' }] },
+    });
+    // Second call: full fetch for metadata
+    mockThreadsGet.mockResolvedValueOnce(makeGmailThread('active-th', 'Active Thread', 'billing@acme.com'));
+
+    const result = await runTriagePass(user.id);
+    expect(result.processed).toBe(1);
+    expect(result.matched).toBe(1);
+    expect(mockThreadsGet).toHaveBeenCalledTimes(2);
+
+    const archived = await prisma.triageDecision.findUnique({ where: { id: oldDecision.id } });
+    expect(archived!.archivedAt).not.toBeNull();
+
+    const newDecision = await prisma.triageDecision.findFirst({
+      where: { threadId: 'active-th', userId: user.id, archivedAt: null },
+    });
+    expect(newDecision).not.toBeNull();
+    expect(newDecision!.lastMessageId).toBe('msg-active-th');
+    expect(newDecision!.priority).toBe('T1');
+  });
+
+  it('updates lastMessageId baseline when new message arrives but no rule matches', async () => {
+    const user = await createTestUser();
+    const oldDecision = await prisma.triageDecision.create({
+      data: { threadId: 'stale-th', userId: user.id, priority: 'T2', digestSummary: 'old', lastMessageId: 'msg-old' },
+    });
+
+    mockThreadsList.mockResolvedValueOnce({
+      data: { threads: [{ id: 'stale-th', snippet: 'new snippet' }], nextPageToken: null },
+    });
+    mockThreadsGet.mockResolvedValueOnce({
+      data: { messages: [{ id: 'msg-old' }, { id: 'msg-new' }] },
+    });
+    mockThreadsGet.mockResolvedValueOnce(makeGmailThread('stale-th', 'Stale Thread', 'nobody@unmatched.com'));
+
+    const result = await runTriagePass(user.id);
+    expect(result.processed).toBe(1);
+    expect(result.unmatched).toBe(1);
+
+    const decision = await prisma.triageDecision.findUnique({ where: { id: oldDecision.id } });
+    expect(decision!.archivedAt).toBeNull();
+    expect(decision!.lastMessageId).toBe('msg-stale-th');
+  });
+
   it('uses cached thread metadata when cache is fresh (no Gmail API call)', async () => {
     const user = await createTestUser();
     await createTestRule(user.id, { trigger: { type: 'sender_domain', domain: 'acme.com' }, priority: 'T3' });

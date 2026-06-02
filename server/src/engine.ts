@@ -145,8 +145,9 @@ export async function runTriagePass(userId: string): Promise<{ fetched: number; 
         const currentLastId = messages[messages.length - 1]?.id;
         if (!currentLastId || currentLastId === existing.lastMessageId) continue;
         newMessageArrived = true;
+      } else {
+        continue;
       }
-      // If no lastMessageId: fall through to re-evaluate and update the decision in place
     }
 
     processed++;
@@ -241,42 +242,28 @@ export async function runTriagePass(userId: string): Promise<{ fetched: number; 
         htmlBody,
       });
 
-      if (existing && !existing.lastMessageId) {
-        // Update in place: backfill lastMessageId and refresh decision fields
-        await prisma.triageDecision.update({
-          where: { id: existing.id },
-          data: { ruleId: matchedRule.id, priority: matchedRule.priority, digestSummary, lastMessageId },
-        });
-      } else {
-        if (newMessageArrived && existing) {
-          // Archive the stale decision before creating the replacement
-          await prisma.triageDecision.update({
-            where: { id: existing.id },
-            data: { archivedAt: new Date() },
-          });
-        }
-        await prisma.triageDecision.create({
-          data: {
-            threadId: raw.id,
-            userId,
-            ruleId: matchedRule.id,
-            priority: matchedRule.priority,
-            digestSummary,
-            lastMessageId,
-          },
-        });
-      }
-      matched++;
-
-      await new Promise(resolve => setTimeout(resolve, 100));
-    } else {
-      if (existing && !existing.lastMessageId) {
-        // Thread no longer matches any rule — archive the stale decision
+      if (newMessageArrived && existing) {
+        // Archive the stale decision before creating the replacement
         await prisma.triageDecision.update({
           where: { id: existing.id },
           data: { archivedAt: new Date() },
         });
-      } else if (newMessageArrived && existing) {
+      }
+      await prisma.triageDecision.create({
+        data: {
+          threadId: raw.id,
+          userId,
+          ruleId: matchedRule.id,
+          priority: matchedRule.priority,
+          digestSummary,
+          lastMessageId,
+        },
+      });
+      matched++;
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+    } else {
+      if (newMessageArrived && existing) {
         // No rule matched — update the lastMessageId baseline without archiving so the
         // decision stays visible in the UI and the next pass doesn't re-trigger
         await prisma.triageDecision.update({

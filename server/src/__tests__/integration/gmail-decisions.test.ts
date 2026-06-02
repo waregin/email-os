@@ -128,6 +128,23 @@ describe('GET /api/gmail/decisions', () => {
     const decision = res.body.T2[0] as { thread: { subject: string } };
     expect(decision.thread.subject).toBe('Subject: th-with-cache');
   });
+
+  it('reflects messageCount and unreadCount from cachedMessages', async () => {
+    const prismaAny = prisma as any;
+    await seedThreadCache('th-counts');
+    await createDecision('th-counts', 'T3');
+    await prismaAny.cachedMessage.createMany({
+      data: [
+        { id: 'msg-1', threadId: 'th-counts', userId, sender: 's@x.com', date: '2024-01-01', subject: 'S', snippet: '', isUnread: true,  labelIds: '["UNREAD"]', position: 0 },
+        { id: 'msg-2', threadId: 'th-counts', userId, sender: 's@x.com', date: '2024-01-01', subject: 'S', snippet: '', isUnread: false, labelIds: '[]',        position: 1 },
+      ],
+    });
+
+    const res = await agent.get('/api/gmail/decisions');
+    const decision = res.body.T3[0] as { thread: { messageCount: number; unreadCount: number } };
+    expect(decision.thread.messageCount).toBe(2);
+    expect(decision.thread.unreadCount).toBe(1);
+  });
 });
 
 describe('GET /api/gmail/decisions error handling', () => {

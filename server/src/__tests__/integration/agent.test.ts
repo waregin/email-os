@@ -140,6 +140,17 @@ describe('POST /api/agent/teach', () => {
     expect(call.system).toContain('acme.com');
   });
 
+  it('returns 500 when Anthropic API throws', async () => {
+    mockCreate.mockRejectedValueOnce(new Error('API failure'));
+
+    const res = await agent.post('/api/agent/teach').send({
+      messages: [{ role: 'user', content: 'help' }],
+      threadContext: THREAD_CONTEXT,
+    });
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('Agent request failed');
+  });
+
   it('returns 500 when ANTHROPIC_MODEL env var is missing', async () => {
     const original = process.env.ANTHROPIC_MODEL;
     delete process.env.ANTHROPIC_MODEL;
