@@ -8,7 +8,7 @@ import type { ThreadData } from './matcher';
 import { buildDigestSummary } from './summarizer';
 import { extractAddress, extractDomain, extractBody, upsertCachedMessages } from './engine';
 import { CACHE_TTL_MS } from './constants';
-import { createOAuthClient, applyCredentials } from './utils/auth';
+import { buildGmailClient } from './utils/auth';
 import { makeHeaderGetter } from './utils/gmail';
 
 export const agentRouter = Router();
@@ -140,19 +140,7 @@ async function buildGmailClientForUser(userId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user?.accessToken) return null;
 
-  const auth = createOAuthClient();
-  applyCredentials(auth, user);
-  auth.on('tokens', async (tokens) => {
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        ...(tokens.access_token ? { accessToken: tokens.access_token } : {}),
-        ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
-        ...(tokens.expiry_date ? { tokenExpiry: new Date(tokens.expiry_date) } : {}),
-      },
-    });
-  });
-
+  const auth = buildGmailClient(user);
   return { gmail: google.gmail({ version: 'v1', auth }), user };
 }
 

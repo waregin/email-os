@@ -5,7 +5,7 @@ import { matchThread } from './matcher';
 import type { ThreadData } from './matcher';
 import { buildDigestSummary } from './summarizer';
 import { CACHE_TTL_MS } from './constants';
-import { createOAuthClient, applyCredentials } from './utils/auth';
+import { buildGmailClient } from './utils/auth';
 import { makeHeaderGetter } from './utils/gmail';
 
 export function extractAddress(from: string): string {
@@ -93,22 +93,7 @@ export async function runTriagePass(userId: string): Promise<{ fetched: number; 
     orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
   });
 
-  const auth = createOAuthClient();
-  applyCredentials(auth, user);
-
-  // Persist refreshed tokens back to DB if they change
-  auth.on('tokens', async (tokens) => {
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        ...(tokens.access_token ? { accessToken: tokens.access_token } : {}),
-        ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
-        ...(tokens.expiry_date ? { tokenExpiry: new Date(tokens.expiry_date) } : {}),
-      },
-    });
-  });
-
-  const gmail = google.gmail({ version: 'v1', auth });
+  const gmail = google.gmail({ version: 'v1', auth: buildGmailClient(user) });
 
   const rawThreads: Array<{ id?: string | null; snippet?: string | null }> = [];
   let pageToken: string | undefined;

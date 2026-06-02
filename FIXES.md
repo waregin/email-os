@@ -51,7 +51,7 @@ Bugs first, then complexity/structural cleanup. Within each group, ordered by us
 **Files:** `server/src/engine.ts:94–107`, `server/src/agent.ts:139–157`  
 **Impact:** Two identical blocks that create an OAuth client, apply credentials, and register a token-refresh listener. A change to token persistence logic must be made in both places.  
 **Fix:** Extract a `buildGmailClient(user)` utility to `server/src/utils/auth.ts`. Both callers use it.  
-**Status:** [ ] Open
+**Status:** [x] Done
 
 ---
 
@@ -111,7 +111,7 @@ Bugs first, then complexity/structural cleanup. Within each group, ordered by us
 | B2 | Stale closure in TeachPanel auto-close | Done |
 | B3 | Favicon doesn't reset at zero unread | Done |
 | B4 | Non-atomic `upsertCachedMessages` | Done |
-| S2 | Duplicated Gmail client setup | Open |
+| S2 | Duplicated Gmail client setup | Done |
 | S3 | Duplicated cache resolution logic | Open |
 | S4 | Extra API call per decided thread | Open |
 | S6 | Unexplained 100ms sleep | Open |
