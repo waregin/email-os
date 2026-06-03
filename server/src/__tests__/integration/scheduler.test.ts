@@ -10,7 +10,7 @@ vi.mock('../../engine', () => ({
 describe('scheduler', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.resetModules(); // fresh `started = false` for each test
+    vi.resetModules(); // fresh activeSchedulers Map for each test
     mockRun.mockReset();
     mockRun.mockResolvedValue({ fetched: 0, processed: 0, matched: 0, unmatched: 0 });
   });
