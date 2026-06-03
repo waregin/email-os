@@ -83,7 +83,7 @@ Bugs first, then complexity/structural cleanup. Within each group, ordered by us
 **File:** `server/src/engine.ts:271`  
 **Impact:** Adds up to 10 seconds of artificial delay for a 100-thread inbox. No comment explains it.  
 **Fix:** Add a comment explaining it's a Gmail API rate-limit back-off. Consider moving it to after the `buildDigestSummary` (Anthropic) call instead, since that's the actual API call that follows. Or remove it if the rate limit has not been hit in practice.  
-**Status:** [ ] Open
+**Status:** [x] Done (comment added as part of S4 engine rewrite)
 
 ---
 
@@ -99,7 +99,7 @@ Bugs first, then complexity/structural cleanup. Within each group, ordered by us
 **File:** `server/src/engine.ts`  
 **Impact:** Two separate conditions in the `else` (unmatched) branch both execute `prisma.triageDecision.update({ data: { lastMessageId } })` — one for legacy decisions with no `lastMessageId`, one for threads where a new message arrived but no rule matched. The logic is identical; maintaining them separately is unnecessary.  
 **Fix:** Merge into `if (existing && (!existing.lastMessageId || newMessageArrived))`.  
-**Status:** [ ] Open
+**Status:** [x] Done (moot — the entire unmatched branch reduced to `unmatched++` when S4 removed all lastMessageId logic)
 
 ---
 
@@ -114,6 +114,6 @@ Bugs first, then complexity/structural cleanup. Within each group, ordered by us
 | S2 | Duplicated Gmail client setup | Done |
 | S3 | Duplicated cache resolution logic | Done |
 | S4 | Remove lastMessageId and simplify triage pass | Done |
-| S6 | Unexplained 100ms sleep | Open |
+| S6 | Unexplained 100ms sleep | Done |
 | S7 | Single-user scheduler flag | Open |
-| S8 | Duplicate update logic in unmatched branch | Open |
+| S8 | Duplicate update logic in unmatched branch | Done |
