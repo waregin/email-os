@@ -59,26 +59,32 @@ describe('describeTrigger', () => {
     expect(describeTrigger({ type: 'sender_domain', domain: 'chase.com' })).toBe('From @chase.com');
   });
 
-  it('describes a sender_domain trigger with a subject filter', () => {
-    expect(describeTrigger({ type: 'sender_domain', domain: 'chase.com', subjectContains: 'statement' }))
-      .toBe('From @chase.com + subject contains "statement"');
+  it('describes a sender_domain trigger with a secondary any-of filter', () => {
+    expect(describeTrigger({ type: 'sender_domain', domain: 'chase.com', subjectOrSnippetContainsAny: ['statement'] }))
+      .toBe('From @chase.com + subject/snippet contains any of: "statement"');
   });
 
-  it('describes a sender trigger (with field fallbacks)', () => {
-    expect(describeTrigger({ type: 'sender', email: 'alice@example.com' })).toBe('From alice@example.com');
+  it('describes a sender_domain trigger with a secondary all-of filter', () => {
+    expect(describeTrigger({ type: 'sender_domain', domain: 'chase.com', subjectOrSnippetContainsAll: ['receipt', 'invoice'] }))
+      .toBe('From @chase.com + subject/snippet contains all of: "receipt", "invoice"');
+  });
+
+  it('describes a sender trigger', () => {
+    expect(describeTrigger({ type: 'sender', sender: 'alice@example.com' })).toBe('From alice@example.com');
   });
 
   it('describes a self_sent trigger', () => {
     expect(describeTrigger({ type: 'self_sent' })).toBe('Self-sent emails');
   });
 
-  it('describes a subject_contains trigger', () => {
-    expect(describeTrigger({ type: 'subject_contains', keyword: 'invoice' })).toBe('Subject contains "invoice"');
+  it('describes a subject_or_snippet_contains_any trigger', () => {
+    expect(describeTrigger({ type: 'subject_or_snippet_contains_any', patterns: ['invoice'] }))
+      .toBe('Subject/snippet contains any of: "invoice"');
   });
 
-  it('describes a subject_or_body_contains trigger with an orContains', () => {
-    expect(describeTrigger({ type: 'subject_or_body_contains', contains: 'receipt', orContains: 'order' }))
-      .toBe('Subject/body contains "receipt" and "order"');
+  it('describes a subject_or_snippet_contains_all trigger', () => {
+    expect(describeTrigger({ type: 'subject_or_snippet_contains_all', patterns: ['receipt', 'order'] }))
+      .toBe('Subject/snippet contains all of: "receipt", "order"');
   });
 
   it('describes an address trigger', () => {
@@ -87,6 +93,26 @@ describe('describeTrigger', () => {
 
   it('falls back to raw JSON when a required field is missing', () => {
     const trigger = { type: 'sender_domain' }; // no domain
+    expect(describeTrigger(trigger)).toBe(JSON.stringify(trigger));
+  });
+
+  it('falls back to raw JSON for a sender trigger with no sender field', () => {
+    const trigger = { type: 'sender' };
+    expect(describeTrigger(trigger)).toBe(JSON.stringify(trigger));
+  });
+
+  it('falls back to raw JSON for subject_or_snippet_contains_any with no patterns', () => {
+    const trigger = { type: 'subject_or_snippet_contains_any' };
+    expect(describeTrigger(trigger)).toBe(JSON.stringify(trigger));
+  });
+
+  it('falls back to raw JSON for subject_or_snippet_contains_all with no patterns', () => {
+    const trigger = { type: 'subject_or_snippet_contains_all' };
+    expect(describeTrigger(trigger)).toBe(JSON.stringify(trigger));
+  });
+
+  it('falls back to raw JSON for an address trigger with no toAddress field', () => {
+    const trigger = { type: 'address' };
     expect(describeTrigger(trigger)).toBe(JSON.stringify(trigger));
   });
 
