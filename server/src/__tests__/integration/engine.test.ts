@@ -268,6 +268,92 @@ describe('runTriagePass', () => {
     expect(result.unmatched).toBe(1);
   });
 
+  it('handles null threads array in Gmail list response', async () => {
+    const user = await createTestUser();
+    mockThreadsList.mockResolvedValueOnce({ data: { threads: null, nextPageToken: null } });
+    const result = await runTriagePass(user.id);
+    expect(result.fetched).toBe(0);
+    expect(result.processed).toBe(0);
+  });
+
+  it('skips inbox entries with a null id', async () => {
+    const user = await createTestUser();
+    mockThreadsList.mockResolvedValueOnce({
+      data: { threads: [{ id: null, snippet: 'x' }, { id: 'valid-th', snippet: 'x' }], nextPageToken: null },
+    });
+    mockThreadsGet.mockResolvedValueOnce(makeGmailThread('valid-th', 'Subject', 'sender@unknown.com'));
+    const result = await runTriagePass(user.id);
+    expect(result.fetched).toBe(2);
+    expect(result.processed).toBe(1);
+  });
+
+  it('uses detail.data.snippet when raw snippet is empty', async () => {
+    const user = await createTestUser();
+    mockThreadsList.mockResolvedValueOnce({
+      data: { threads: [{ id: 'th-1', snippet: '' }], nextPageToken: null },
+    });
+    mockThreadsGet.mockResolvedValueOnce({
+      data: {
+        id: 'th-1',
+        snippet: 'detail-level snippet',
+        messages: [{
+          id: 'msg-th-1',
+          payload: {
+            headers: [
+              { name: 'Subject', value: 'Subject' },
+              { name: 'From', value: 'sender@unknown.com' },
+              { name: 'Date', value: '2024-01-01' },
+              { name: 'To', value: 'me@example.com' },
+            ],
+            mimeType: 'text/plain',
+            body: { data: Buffer.from('body').toString('base64url') },
+          },
+          labelIds: ['INBOX'],
+          snippet: '',
+        }],
+      },
+    });
+    await runTriagePass(user.id);
+    const cache = await prisma.threadCache.findUnique({ where: { id: 'th-1' } });
+    expect(cache!.snippet).toBe('detail-level snippet');
+  });
+
+  it('handles thread response with an empty messages array', async () => {
+    const user = await createTestUser();
+    mockThreadsList.mockResolvedValueOnce({
+      data: { threads: [{ id: 'empty-msg-th', snippet: 'x' }], nextPageToken: null },
+    });
+    mockThreadsGet.mockResolvedValueOnce({ data: { id: 'empty-msg-th', messages: [] } });
+    const result = await runTriagePass(user.id);
+    expect(result.processed).toBe(1);
+    const cache = await prisma.threadCache.findUnique({ where: { id: 'empty-msg-th' } });
+    expect(cache!.subject).toBe('(no subject)');
+    expect(cache!.labelIds).toBe('[]');
+  });
+
+  it('resolves toAddresses to empty array when ThreadCache.toAddresses is an empty string', async () => {
+    const user = await createTestUser();
+    await createTestRule(user.id, { trigger: { type: 'sender_domain', domain: 'acme.com' }, priority: 'T3' });
+    await prisma.threadCache.create({
+      data: {
+        id: 'no-to-th',
+        userId: user.id,
+        subject: 'Cached',
+        sender: 'billing@acme.com',
+        snippet: 'snippet',
+        date: '2024-01-01',
+        labelIds: '["INBOX"]',
+        toAddresses: '',
+      },
+    });
+    mockThreadsList.mockResolvedValueOnce({
+      data: { threads: [{ id: 'no-to-th', snippet: 'snippet' }], nextPageToken: null },
+    });
+    const result = await runTriagePass(user.id);
+    expect(result.processed).toBe(1);
+    expect(mockThreadsGet).not.toHaveBeenCalled();
+  });
+
   it('persists refreshed OAuth tokens to DB when the tokens event fires', async () => {
     const user = await createTestUser();
     mockThreadsList.mockResolvedValueOnce({ data: { threads: [], nextPageToken: null } });

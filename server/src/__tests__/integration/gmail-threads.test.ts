@@ -147,6 +147,28 @@ describe('GET /api/gmail/threads', () => {
     expect(res.status).toBe(500);
   });
 
+  it('paginates to a second page when the first page has only decided threads (undecided=true)', async () => {
+    const user = await prisma.user.findUnique({ where: { email: 'test@example.com' } });
+    await prisma.triageDecision.create({
+      data: { threadId: 'decided-p1', userId: user!.id, priority: 'T2', digestSummary: 'x' },
+    });
+    mockThreadsList
+      .mockResolvedValueOnce({
+        data: { threads: [{ id: 'decided-p1', snippet: 'x' }], nextPageToken: 'page2' },
+      })
+      .mockResolvedValueOnce({
+        data: { threads: [{ id: 'fresh-p2', snippet: 'y' }], nextPageToken: null },
+      });
+    mockThreadsGet.mockResolvedValueOnce(makeThreadGetResponse('Fresh', 'sender@example.com'));
+
+    const res = await agent.get('/api/gmail/threads?undecided=true');
+    expect(res.status).toBe(200);
+    expect(mockThreadsList).toHaveBeenCalledTimes(2);
+    const ids = (res.body.threads as Array<{ id: string }>).map((t) => t.id);
+    expect(ids).toContain('fresh-p2');
+    expect(ids).not.toContain('decided-p1');
+  });
+
   it('falls back to default values when one thread metadata fetch fails inside the batch', async () => {
     mockThreadsList.mockResolvedValueOnce({
       data: {
@@ -248,6 +270,52 @@ describe('GET /api/gmail/threads/:id', () => {
     mockThreadsGet.mockRejectedValueOnce(new Error('network error'));
     const res = await agent.get('/api/gmail/threads/error-thread');
     expect(res.status).toBe(500);
+  });
+
+  it('sets toRecipients to empty array when To header is absent', async () => {
+    mockThreadsGet.mockResolvedValueOnce({
+      data: {
+        id: 'no-to-th',
+        messages: [{
+          id: 'msg-1',
+          payload: {
+            mimeType: 'text/plain',
+            headers: [
+              { name: 'Subject', value: 'No To' },
+              { name: 'From', value: 'sender@example.com' },
+              { name: 'Date', value: '2024-01-01' },
+            ],
+            body: { data: Buffer.from('body').toString('base64url') },
+          },
+          labelIds: ['INBOX'],
+          snippet: 'snippet',
+        }],
+      },
+    });
+    const res = await agent.get('/api/gmail/threads/no-to-th');
+    expect(res.status).toBe(200);
+    expect(res.body.messages[0].toRecipients).toEqual([]);
+  });
+
+  it('sets labelIds and isUnread to defaults when labelIds is absent on a message', async () => {
+    mockThreadsGet.mockResolvedValueOnce({
+      data: {
+        id: 'no-labels-th',
+        messages: [{
+          id: 'msg-1',
+          payload: {
+            mimeType: 'text/plain',
+            headers: [{ name: 'Subject', value: 'No Labels' }],
+            body: {},
+          },
+          snippet: 'snippet',
+        }],
+      },
+    });
+    const res = await agent.get('/api/gmail/threads/no-labels-th');
+    expect(res.status).toBe(200);
+    expect(res.body.messages[0].isUnread).toBe(false);
+    expect(res.body.messages[0].labelIds).toEqual([]);
   });
 });
 

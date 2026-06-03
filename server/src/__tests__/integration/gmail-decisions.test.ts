@@ -341,3 +341,127 @@ describe('POST /api/gmail/decisions/:id/misclassified', () => {
     vi.restoreAllMocks();
   });
 });
+
+describe('GET /api/gmail/decisions — unknown priority fallback', () => {
+  it('routes a decision with an unrecognised priority into the T4 bucket', async () => {
+    await prisma.triageDecision.create({
+      data: { threadId: 'th-unknown-pri', userId, priority: 'TX', digestSummary: 'x' },
+    });
+    const res = await agent.get('/api/gmail/decisions');
+    expect(res.status).toBe(200);
+    const t4Ids = (res.body.T4 as Array<{ threadId: string }>).map((d) => d.threadId);
+    expect(t4Ids).toContain('th-unknown-pri');
+  });
+});
+
+describe('POST /api/gmail/decisions/:id/followup', () => {
+  it('returns 401 without auth', async () => {
+    const res = await request(app).post('/api/gmail/decisions/any/followup');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 404 for a non-existent decision', async () => {
+    const res = await agent.post('/api/gmail/decisions/nonexistent/followup');
+    expect(res.status).toBe(404);
+  });
+
+  it('promotes decision to T2, sets userFlagged, and removes UNREAD label', async () => {
+    const d = await createDecision('th-followup', 'T3');
+    const res = await agent.post(`/api/gmail/decisions/${d.id}/followup`);
+    expect(res.status).toBe(200);
+
+    const updated = await prisma.triageDecision.findUnique({ where: { id: d.id } });
+    expect(updated!.priority).toBe('T2');
+    expect(updated!.userFlagged).toBe(true);
+    expect(updated!.confirmedByUser).toBe(true);
+    expect(updated!.archivedAt).toBeNull();
+
+    const call = mockThreadsModify.mock.calls[0]![0] as { requestBody: { removeLabelIds: string[] } };
+    expect(call.requestBody.removeLabelIds).toEqual(['UNREAD']);
+  });
+
+  it('returns 500 when a database error occurs', async () => {
+    const d = await createDecision('th-followup-err', 'T3');
+    vi.spyOn(prisma.triageDecision, 'update').mockRejectedValueOnce(new Error('DB error'));
+    const res = await agent.post(`/api/gmail/decisions/${d.id}/followup`);
+    expect(res.status).toBe(500);
+    vi.restoreAllMocks();
+  });
+});
+
+describe('POST /api/gmail/decisions/confirm-all', () => {
+  it('returns 401 without auth', async () => {
+    const res = await request(app).post('/api/gmail/decisions/confirm-all')
+      .send({ decisionIds: [], tier: 'T3' });
+    expect(res.status).toBe(401);
+  });
+
+  it('returns ok with processed=0 when decisionIds array is empty', async () => {
+    const res = await agent.post('/api/gmail/decisions/confirm-all')
+      .send({ decisionIds: [], tier: 'T3' });
+    expect(res.status).toBe(200);
+    expect(res.body.processed).toBe(0);
+  });
+
+  it('archives T3/T4 decisions and removes INBOX + UNREAD labels', async () => {
+    const d1 = await createDecision('th-ca-1', 'T3');
+    const d2 = await createDecision('th-ca-2', 'T3');
+
+    const res = await agent.post('/api/gmail/decisions/confirm-all')
+      .send({ decisionIds: [d1.id, d2.id], tier: 'T3' });
+    expect(res.status).toBe(200);
+    expect(res.body.processed).toBe(2);
+
+    const updated = await prisma.triageDecision.findUnique({ where: { id: d1.id } });
+    expect(updated!.archivedAt).not.toBeNull();
+    expect(updated!.wasCorrect).toBe(true);
+
+    const call = mockThreadsModify.mock.calls[0]![0] as { requestBody: { removeLabelIds: string[] } };
+    expect(call.requestBody.removeLabelIds).toContain('INBOX');
+    expect(call.requestBody.removeLabelIds).toContain('UNREAD');
+  });
+
+  it('confirms T1/T2 decisions without archiving — removes UNREAD only', async () => {
+    const d = await createDecision('th-ca-t1', 'T1');
+    await agent.post('/api/gmail/decisions/confirm-all')
+      .send({ decisionIds: [d.id], tier: 'T1' });
+
+    const updated = await prisma.triageDecision.findUnique({ where: { id: d.id } });
+    expect(updated!.archivedAt).toBeNull();
+    expect(updated!.confirmedByUser).toBe(true);
+
+    const call = mockThreadsModify.mock.calls[0]![0] as { requestBody: { removeLabelIds: string[] } };
+    expect(call.requestBody.removeLabelIds).toEqual(['UNREAD']);
+  });
+
+  it('returns 500 when a database error occurs', async () => {
+    const d = await createDecision('th-ca-err', 'T3');
+    vi.spyOn(prisma.triageDecision, 'updateMany').mockRejectedValueOnce(new Error('DB error'));
+    const res = await agent.post('/api/gmail/decisions/confirm-all')
+      .send({ decisionIds: [d.id], tier: 'T3' });
+    expect(res.status).toBe(500);
+    vi.restoreAllMocks();
+  });
+});
+
+describe('POST /api/gmail/decisions/:id/done — additional cases', () => {
+  it('returns 401 without auth', async () => {
+    const res = await request(app).post('/api/gmail/decisions/any/done');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 500 when a database error occurs', async () => {
+    const d = await createDecision('th-done-db-err', 'T1');
+    vi.spyOn(prisma.triageDecision, 'update').mockRejectedValueOnce(new Error('DB error'));
+    const res = await agent.post(`/api/gmail/decisions/${d.id}/done`);
+    expect(res.status).toBe(500);
+    vi.restoreAllMocks();
+  });
+});
+
+describe('POST /api/gmail/decisions/:id/confirm — additional cases', () => {
+  it('returns 401 without auth', async () => {
+    const res = await request(app).post('/api/gmail/decisions/any/confirm');
+    expect(res.status).toBe(401);
+  });
+});
