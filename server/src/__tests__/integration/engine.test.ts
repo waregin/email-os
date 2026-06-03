@@ -105,122 +105,43 @@ describe('runTriagePass', () => {
     expect(result.unmatched).toBe(2);
   });
 
-  it('backfills lastMessageId for a legacy decision that has none', async () => {
-    const user = await createTestUser();
-    await createTestRule(user.id, { trigger: { type: 'sender_domain', domain: 'acme.com' }, priority: 'T2' });
-    const legacy = await prisma.triageDecision.create({
-      data: { threadId: 'legacy-th', userId: user.id, priority: 'T2', digestSummary: 'old' },
-    });
-
-    mockThreadsList.mockResolvedValueOnce({
-      data: { threads: [{ id: 'legacy-th', snippet: 'x' }], nextPageToken: null },
-    });
-    mockThreadsGet.mockResolvedValueOnce(makeGmailThread('legacy-th', 'Legacy Thread', 'billing@acme.com'));
-
-    const result = await runTriagePass(user.id);
-    expect(result.processed).toBe(1);
-
-    // Updated in place — no new decision row created
-    const decisions = await prisma.triageDecision.findMany({ where: { threadId: 'legacy-th', userId: user.id } });
-    expect(decisions).toHaveLength(1);
-    expect(decisions[0]!.id).toBe(legacy.id);
-    expect(decisions[0]!.lastMessageId).toBe('msg-legacy-th');
-    expect(decisions[0]!.archivedAt).toBeNull();
-  });
-
-  it('backfills lastMessageId for a legacy decision when no rule matches', async () => {
-    const user = await createTestUser();
-    const legacy = await prisma.triageDecision.create({
-      data: { threadId: 'legacy-unmatched-th', userId: user.id, priority: 'T2', digestSummary: 'old' },
-    });
-
-    mockThreadsList.mockResolvedValueOnce({
-      data: { threads: [{ id: 'legacy-unmatched-th', snippet: 'x' }], nextPageToken: null },
-    });
-    mockThreadsGet.mockResolvedValueOnce(makeGmailThread('legacy-unmatched-th', 'Legacy Thread', 'nobody@unmatched.com'));
-
-    const result = await runTriagePass(user.id);
-    expect(result.processed).toBe(1);
-    expect(result.unmatched).toBe(1);
-
-    const decision = await prisma.triageDecision.findUnique({ where: { id: legacy.id } });
-    expect(decision!.lastMessageId).toBe('msg-legacy-unmatched-th');
-    expect(decision!.archivedAt).toBeNull();
-  });
-
-  it('skips already-decided thread when lastMessageId has not changed', async () => {
+  it('skips threads with an active non-archived decision', async () => {
     const user = await createTestUser();
     await prisma.triageDecision.create({
-      data: { threadId: 'decided-th', userId: user.id, priority: 'T2', digestSummary: 'x', lastMessageId: 'msg-original' },
+      data: { threadId: 'decided-th', userId: user.id, priority: 'T2', digestSummary: 'x' },
     });
 
     mockThreadsList.mockResolvedValueOnce({
       data: { threads: [{ id: 'decided-th', snippet: 'x' }], nextPageToken: null },
     });
-    mockThreadsGet.mockResolvedValueOnce({
-      data: { messages: [{ id: 'msg-original' }] },
-    });
 
     const result = await runTriagePass(user.id);
     expect(result.fetched).toBe(1);
     expect(result.processed).toBe(0);
-    expect(mockThreadsGet).toHaveBeenCalledOnce();
+    expect(mockThreadsGet).not.toHaveBeenCalled();
   });
 
-  it('re-triages thread and archives old decision when a new message has arrived', async () => {
+  it('re-triages a thread whose previous decision was archived', async () => {
     const user = await createTestUser();
-    await createTestRule(user.id, { trigger: { type: 'sender_domain', domain: 'acme.com' }, priority: 'T1' });
-    const oldDecision = await prisma.triageDecision.create({
-      data: { threadId: 'active-th', userId: user.id, priority: 'T1', digestSummary: 'old', lastMessageId: 'msg-old' },
+    await createTestRule(user.id, { trigger: { type: 'sender_domain', domain: 'acme.com' }, priority: 'T2' });
+    await prisma.triageDecision.create({
+      data: { threadId: 'returned-th', userId: user.id, priority: 'T2', digestSummary: 'old', archivedAt: new Date() },
     });
 
     mockThreadsList.mockResolvedValueOnce({
-      data: { threads: [{ id: 'active-th', snippet: 'new snippet' }], nextPageToken: null },
+      data: { threads: [{ id: 'returned-th', snippet: 'x' }], nextPageToken: null },
     });
-    // First call: minimal fetch to detect new message
-    mockThreadsGet.mockResolvedValueOnce({
-      data: { messages: [{ id: 'msg-old' }, { id: 'msg-new' }] },
-    });
-    // Second call: full fetch for metadata
-    mockThreadsGet.mockResolvedValueOnce(makeGmailThread('active-th', 'Active Thread', 'billing@acme.com'));
+    mockThreadsGet.mockResolvedValueOnce(makeGmailThread('returned-th', 'Back in inbox', 'billing@acme.com'));
 
     const result = await runTriagePass(user.id);
     expect(result.processed).toBe(1);
     expect(result.matched).toBe(1);
-    expect(mockThreadsGet).toHaveBeenCalledTimes(2);
 
-    const archived = await prisma.triageDecision.findUnique({ where: { id: oldDecision.id } });
-    expect(archived!.archivedAt).not.toBeNull();
-
-    const newDecision = await prisma.triageDecision.findFirst({
-      where: { threadId: 'active-th', userId: user.id, archivedAt: null },
+    const decisions = await prisma.triageDecision.findMany({
+      where: { threadId: 'returned-th', userId: user.id },
     });
-    expect(newDecision).not.toBeNull();
-    expect(newDecision!.lastMessageId).toBe('msg-active-th');
-    expect(newDecision!.priority).toBe('T1');
-  });
-
-  it('updates lastMessageId baseline when new message arrives but no rule matches', async () => {
-    const user = await createTestUser();
-    const oldDecision = await prisma.triageDecision.create({
-      data: { threadId: 'stale-th', userId: user.id, priority: 'T2', digestSummary: 'old', lastMessageId: 'msg-old' },
-    });
-
-    mockThreadsList.mockResolvedValueOnce({
-      data: { threads: [{ id: 'stale-th', snippet: 'new snippet' }], nextPageToken: null },
-    });
-    mockThreadsGet.mockResolvedValueOnce({
-      data: { messages: [{ id: 'msg-old' }, { id: 'msg-new' }] },
-    });
-    mockThreadsGet.mockResolvedValueOnce(makeGmailThread('stale-th', 'Stale Thread', 'nobody@unmatched.com'));
-
-    const result = await runTriagePass(user.id);
-    expect(result.processed).toBe(1);
-    expect(result.unmatched).toBe(1);
-
-    const decision = await prisma.triageDecision.findUnique({ where: { id: oldDecision.id } });
-    expect(decision!.archivedAt).toBeNull();
-    expect(decision!.lastMessageId).toBe('msg-stale-th');
+    expect(decisions).toHaveLength(2);
+    expect(decisions.filter((d) => d.archivedAt === null)).toHaveLength(1);
   });
 
   it('uses cached thread metadata when cache is fresh (no Gmail API call)', async () => {
@@ -353,7 +274,6 @@ describe('runTriagePass', () => {
 
     await runTriagePass(user.id);
 
-    // The OAuth2Client mock captures the 'tokens' callback; fire it now to hit line 111
     expect(capturedCallbacks.tokens).toBeDefined();
     await capturedCallbacks.tokens!({ access_token: 'oauth-refreshed', expiry_date: Date.now() + 7200000 });
 

@@ -55,7 +55,6 @@ model TriageDecision {
   wasCorrect      Boolean?
   archivedAt      DateTime?
   userFlagged     Boolean     @default(false)
-  lastMessageId   String?
 
   @@index([threadId])
   @@index([userId, archivedAt])

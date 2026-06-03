@@ -63,11 +63,11 @@ Bugs first, then complexity/structural cleanup. Within each group, ordered by us
 
 ---
 
-### S4 — Extra Gmail API call per decided thread on every triage pass
-**File:** `server/src/engine.ts:139–147`  
-**Impact:** For each thread that already has a decision, the engine calls `threads.get` (format: minimal) to check for a new last message. 50 decided threads = 50 extra API calls per 3-minute pass before any triage work starts.  
-**Fix:** Cache the last-fetched Gmail `historyId` per user and use the Gmail History API (`users.history.list`) to get only changed threads since the last pass. If that's too large a refactor, at minimum batch the decided-thread list and filter using already-cached `CachedMessage` data before hitting the API.  
-**Status:** [ ] Open
+### S4 — Remove lastMessageId re-triage logic and simplify runTriagePass
+**Files:** `server/src/engine.ts`, `server/src/utils/thread-cache.ts`, `server/prisma/schema.prisma`, `server/src/__tests__/integration/engine.test.ts`  
+**Impact:** `lastMessageId` on `TriageDecision` drove a per-thread `threads.get` (minimal) call plus a two-path backfill/re-triage state machine adding ~40 lines to `runTriagePass`. The re-triage behaviour was unnecessary: `WHERE archivedAt IS NULL` already handles threads returning to inbox after archiving. Active decisions are already visible in the digest.  
+**Fix:** Remove `lastMessageId` from schema, code, and tests. `runTriagePass` now has a single rule: skip any thread with an active non-archived decision. Replaced the add-field migration with a drop-field migration.  
+**Status:** [x] Done
 
 ---
 
@@ -113,7 +113,7 @@ Bugs first, then complexity/structural cleanup. Within each group, ordered by us
 | B4 | Non-atomic `upsertCachedMessages` | Done |
 | S2 | Duplicated Gmail client setup | Done |
 | S3 | Duplicated cache resolution logic | Done |
-| S4 | Extra API call per decided thread | Open |
+| S4 | Remove lastMessageId and simplify triage pass | Done |
 | S6 | Unexplained 100ms sleep | Open |
 | S7 | Single-user scheduler flag | Open |
 | S8 | Duplicate update logic in unmatched branch | Open |

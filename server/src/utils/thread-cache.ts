@@ -92,7 +92,6 @@ export async function resolveThreadMetadata(
   toAddresses: string[];
   htmlBody: string | null;
   plaintextBody: string | null;
-  lastMessageId: string | null;
 }> {
   const cached = await prisma.threadCache.findUnique({ where: { id: threadId } });
   const ageMs = cached ? Date.now() - new Date(cached.cachedAt).getTime() : Infinity;
@@ -112,7 +111,6 @@ export async function resolveThreadMetadata(
     const toHeader = h('To');
     const toAddresses = toHeader ? toHeader.split(',').map((s) => s.trim()) : [];
     const body = last?.payload ? extractBody(last.payload) : { html: null, plain: null };
-    const lastMessageId = last?.id ?? null;
 
     await prisma.threadCache.upsert({
       where: { id: threadId },
@@ -121,13 +119,8 @@ export async function resolveThreadMetadata(
     });
     await upsertCachedMessages(threadId, userId, messages);
 
-    return { subject, sender, snippet: resolvedSnippet, date, labelIds, toAddresses, htmlBody: body.html, plaintextBody: body.plain, lastMessageId };
+    return { subject, sender, snippet: resolvedSnippet, date, labelIds, toAddresses, htmlBody: body.html, plaintextBody: body.plain };
   }
-
-  const lastMsg = await prisma.cachedMessage.findFirst({
-    where: { threadId },
-    orderBy: { position: 'desc' },
-  });
 
   return {
     subject: cached.subject,
@@ -138,6 +131,5 @@ export async function resolveThreadMetadata(
     toAddresses: cached.toAddresses ? (JSON.parse(cached.toAddresses) as string[]) : [],
     htmlBody: cached.htmlBody ?? null,
     plaintextBody: cached.plaintextBody ?? null,
-    lastMessageId: lastMsg?.id ?? null,
   };
 }
