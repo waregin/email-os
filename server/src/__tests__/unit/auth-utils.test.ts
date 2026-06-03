@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mockUpdate = vi.fn();
-const mockSetCredentials = vi.fn();
-let capturedTokensCallback: ((tokens: Record<string, unknown>) => Promise<void>) | null = null;
+const { mockUpdate, mockSetCredentials, capturedCallbacks } = vi.hoisted(() => ({
+  mockUpdate: vi.fn(),
+  mockSetCredentials: vi.fn(),
+  capturedCallbacks: { tokens: null as ((tokens: Record<string, unknown>) => Promise<void>) | null },
+}));
 
 vi.mock('../../db', () => ({
   prisma: { user: { update: mockUpdate } },
@@ -13,7 +15,7 @@ vi.mock('google-auth-library', () => ({
     return {
       setCredentials: mockSetCredentials,
       on: vi.fn().mockImplementation((event: string, cb: (t: Record<string, unknown>) => Promise<void>) => {
-        if (event === 'tokens') capturedTokensCallback = cb;
+        if (event === 'tokens') capturedCallbacks.tokens = cb;
       }),
     };
   },
@@ -31,13 +33,13 @@ const baseUser = {
 beforeEach(() => {
   mockUpdate.mockReset().mockResolvedValue({});
   mockSetCredentials.mockReset();
-  capturedTokensCallback = null;
+  capturedCallbacks.tokens = null;
 });
 
 describe('buildGmailClient — token refresh callback', () => {
   it('persists access_token when present in refresh payload', async () => {
     buildGmailClient(baseUser);
-    await capturedTokensCallback!({ access_token: 'new-access' });
+    await capturedCallbacks.tokens!({ access_token: 'new-access' });
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ accessToken: 'new-access' }),
     }));
@@ -45,7 +47,7 @@ describe('buildGmailClient — token refresh callback', () => {
 
   it('persists refresh_token when present in refresh payload', async () => {
     buildGmailClient(baseUser);
-    await capturedTokensCallback!({ refresh_token: 'new-refresh' });
+    await capturedCallbacks.tokens!({ refresh_token: 'new-refresh' });
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ refreshToken: 'new-refresh' }),
     }));
@@ -54,7 +56,7 @@ describe('buildGmailClient — token refresh callback', () => {
   it('persists tokenExpiry when expiry_date is present in refresh payload', async () => {
     buildGmailClient(baseUser);
     const expiry = Date.now() + 3600000;
-    await capturedTokensCallback!({ expiry_date: expiry });
+    await capturedCallbacks.tokens!({ expiry_date: expiry });
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ tokenExpiry: new Date(expiry) }),
     }));
@@ -62,7 +64,7 @@ describe('buildGmailClient — token refresh callback', () => {
 
   it('omits fields absent from the refresh payload', async () => {
     buildGmailClient(baseUser);
-    await capturedTokensCallback!({ access_token: 'only-access' });
+    await capturedCallbacks.tokens!({ access_token: 'only-access' });
     const call = mockUpdate.mock.calls[0]![0] as { data: Record<string, unknown> };
     expect(call.data.accessToken).toBe('only-access');
     expect(call.data.refreshToken).toBeUndefined();

@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { gmail_v1 } from 'googleapis';
 
-const mockDeleteMany = vi.fn().mockReturnValue({});
-const mockCreateMany = vi.fn().mockReturnValue({});
-const mockTransaction = vi.fn().mockResolvedValue([]);
+const { mockDeleteMany, mockCreateMany, mockTransaction } = vi.hoisted(() => ({
+  mockDeleteMany: vi.fn().mockReturnValue({}),
+  mockCreateMany: vi.fn().mockReturnValue({}),
+  mockTransaction: vi.fn().mockResolvedValue([]),
+}));
 
 vi.mock('../../db', () => ({
   prisma: {
@@ -80,7 +82,7 @@ describe('upsertCachedMessages', () => {
     expect(d.plaintextBody).toBeNull();
   });
 
-  it('uses empty headers when msg.payload is absent — sender and date fall back to empty string', async () => {
+  it('falls back to empty sender and date strings when msg.payload is absent', async () => {
     await upsertCachedMessages('th-1', 'user-1', [msg({ payload: undefined })]);
     const d = getCreateData()[0];
     expect(d.sender).toBe('');

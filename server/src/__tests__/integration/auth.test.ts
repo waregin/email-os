@@ -121,6 +121,43 @@ describe('GET /auth/callback', () => {
     const res = await request(app).get('/auth/callback?code=bad-code');
     expect(res.status).toBe(500);
   });
+
+  it('completes without creating a user when access_token is absent from token response', async () => {
+    mockGetToken.mockResolvedValueOnce({ tokens: {} });
+    const res = await request(app).get('/auth/callback?code=no-access-token');
+    expect(res.status).toBe(200);
+    const user = await prisma.user.findFirst();
+    expect(user).toBeNull();
+    expect(startScheduler).not.toHaveBeenCalled();
+  });
+
+  it('completes without creating a user when email is absent from token info', async () => {
+    mockGetTokenInfo.mockResolvedValueOnce({ email: undefined });
+    const res = await request(app).get('/auth/callback?code=no-email');
+    expect(res.status).toBe(200);
+    const user = await prisma.user.findFirst();
+    expect(user).toBeNull();
+  });
+
+  it('creates user with null refreshToken when refresh_token is absent from tokens', async () => {
+    mockGetToken.mockResolvedValueOnce({
+      tokens: { access_token: 'tok', expiry_date: new Date('2099-01-01').getTime() },
+    });
+    await request(app).get('/auth/callback?code=no-refresh');
+    const user = await prisma.user.findUnique({ where: { email: 'test@example.com' } });
+    expect(user).not.toBeNull();
+    expect(user!.refreshToken).toBeNull();
+  });
+
+  it('creates user with null tokenExpiry when expiry_date is absent from tokens', async () => {
+    mockGetToken.mockResolvedValueOnce({
+      tokens: { access_token: 'tok', refresh_token: 'rtok' },
+    });
+    await request(app).get('/auth/callback?code=no-expiry');
+    const user = await prisma.user.findUnique({ where: { email: 'test@example.com' } });
+    expect(user).not.toBeNull();
+    expect(user!.tokenExpiry).toBeNull();
+  });
 });
 
 describe('POST /auth/logout', () => {

@@ -163,6 +163,38 @@ describe('POST /api/agent/teach', () => {
 
     process.env.ANTHROPIC_MODEL = original;
   });
+
+  it('includes userContext in the system prompt when provided', async () => {
+    mockCreate.mockResolvedValueOnce({ content: [{ type: 'text', text: 'ok' }] });
+    await agent.post('/api/agent/teach').send({
+      messages: [{ role: 'user', content: 'help' }],
+      threadContext: THREAD_CONTEXT,
+      userContext: 'This user runs a startup inbox.',
+    });
+    const call = mockCreate.mock.calls[0]![0] as { system: string };
+    expect(call.system).toContain('This user runs a startup inbox.');
+  });
+
+  it('includes rule notes in the injected existing-rules list', async () => {
+    await prisma.triageRule.create({
+      data: {
+        userId,
+        trigger: JSON.stringify({ type: 'sender', sender: 'boss@corp.com' }),
+        action: 'digest',
+        priority: 'T1',
+        digestSummaryTemplate: 'Boss: {subject}',
+        notes: 'VIP sender — never delay',
+        source: 'agent',
+      },
+    });
+    mockCreate.mockResolvedValueOnce({ content: [{ type: 'text', text: 'ok' }] });
+    await agent.post('/api/agent/teach').send({
+      messages: [{ role: 'user', content: 'help' }],
+      threadContext: THREAD_CONTEXT,
+    });
+    const call = mockCreate.mock.calls[0]![0] as { system: string };
+    expect(call.system).toContain('VIP sender — never delay');
+  });
 });
 
 describe('POST /api/agent/rules', () => {
@@ -342,6 +374,145 @@ describe('POST /api/agent/rules', () => {
     expect(mockThreadsGet).not.toHaveBeenCalled(); // served from cache
     const ids = (res.body.matchingThreads as Array<{ threadId: string }>).map((t) => t.threadId);
     expect(ids).toContain('th-cached-rules');
+  });
+
+  it('stores JSON.stringify of trigger when trigger is an invalid object (normalizeTrigger object fallback)', async () => {
+    const badTrigger = { type: 'unknown_trigger_type', extra: 'x' };
+    const res = await agent.post('/api/agent/rules').send({
+      rule: { trigger: badTrigger, action: 'digest', priority: 'T3', digestSummaryTemplate: 'x' },
+    });
+    expect(res.status).toBe(200);
+    const rule = await prisma.triageRule.findUnique({ where: { id: res.body.ruleId } });
+    expect(rule!.trigger).toBe(JSON.stringify(badTrigger));
+  });
+
+  it('scans all pages when the Gmail inbox spans multiple pages', async () => {
+    mockThreadsList
+      .mockResolvedValueOnce({
+        data: { threads: [{ id: 'p1-th', snippet: 'page one' }], nextPageToken: 'page2-token' },
+      })
+      .mockResolvedValueOnce({
+        data: { threads: [{ id: 'p2-th', snippet: 'page two' }], nextPageToken: null },
+      });
+    mockThreadsGet
+      .mockResolvedValueOnce({
+        data: {
+          messages: [{
+            id: 'p1-msg',
+            payload: {
+              headers: [
+                { name: 'Subject', value: 'Page 1 Email' },
+                { name: 'From', value: 'sender@acme.com' },
+                { name: 'Date', value: '2024-01-01' },
+                { name: 'To', value: 'me@example.com' },
+              ],
+              mimeType: 'text/plain',
+              body: { data: Buffer.from('body').toString('base64url') },
+            },
+            labelIds: ['INBOX'],
+            snippet: 'page one',
+          }],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          messages: [{
+            id: 'p2-msg',
+            payload: {
+              headers: [
+                { name: 'Subject', value: 'Page 2 Email' },
+                { name: 'From', value: 'sender@acme.com' },
+                { name: 'Date', value: '2024-01-01' },
+                { name: 'To', value: 'me@example.com' },
+              ],
+              mimeType: 'text/plain',
+              body: { data: Buffer.from('body').toString('base64url') },
+            },
+            labelIds: ['INBOX'],
+            snippet: 'page two',
+          }],
+        },
+      });
+
+    const res = await agent.post('/api/agent/rules').send({
+      rule: { trigger: { type: 'sender_domain', domain: 'acme.com' }, action: 'digest', priority: 'T3', digestSummaryTemplate: 'x' },
+    });
+
+    expect(mockThreadsList).toHaveBeenCalledTimes(2);
+    const ids = (res.body.matchingThreads as Array<{ threadId: string }>).map((t) => t.threadId);
+    expect(ids).toContain('p1-th');
+    expect(ids).toContain('p2-th');
+  });
+
+  it('skips threads whose id is null in the inbox listing', async () => {
+    mockThreadsList.mockResolvedValueOnce({
+      data: {
+        threads: [
+          { id: null, snippet: 'no-id' },
+          { id: 'th-real', snippet: 'real' },
+        ],
+        nextPageToken: null,
+      },
+    });
+    mockThreadsGet.mockResolvedValueOnce({
+      data: {
+        messages: [{
+          id: 'msg-real',
+          payload: {
+            headers: [
+              { name: 'Subject', value: 'Real Thread' },
+              { name: 'From', value: 'sender@acme.com' },
+              { name: 'Date', value: '2024-01-01' },
+              { name: 'To', value: 'me@example.com' },
+            ],
+            mimeType: 'text/plain',
+            body: { data: Buffer.from('body').toString('base64url') },
+          },
+          labelIds: ['INBOX'],
+          snippet: 'real',
+        }],
+      },
+    });
+
+    const res = await agent.post('/api/agent/rules').send({
+      rule: { trigger: { type: 'sender_domain', domain: 'acme.com' }, action: 'digest', priority: 'T3', digestSummaryTemplate: 'x' },
+    });
+
+    expect(mockThreadsGet).toHaveBeenCalledOnce();
+    const ids = (res.body.matchingThreads as Array<{ threadId: string }>).map((t) => t.threadId);
+    expect(ids).toContain('th-real');
+  });
+
+  it('returns an empty matchingThreads list when inbox threads do not match the rule', async () => {
+    mockThreadsList.mockResolvedValueOnce({
+      data: { threads: [{ id: 'th-nomatch', snippet: 'other domain' }], nextPageToken: null },
+    });
+    mockThreadsGet.mockResolvedValueOnce({
+      data: {
+        messages: [{
+          id: 'msg-nomatch',
+          payload: {
+            headers: [
+              { name: 'Subject', value: 'Newsletter' },
+              { name: 'From', value: 'news@otherdomain.com' },
+              { name: 'Date', value: '2024-01-01' },
+              { name: 'To', value: 'me@example.com' },
+            ],
+            mimeType: 'text/plain',
+            body: { data: Buffer.from('body').toString('base64url') },
+          },
+          labelIds: ['INBOX'],
+          snippet: 'other domain',
+        }],
+      },
+    });
+
+    const res = await agent.post('/api/agent/rules').send({
+      rule: { trigger: { type: 'sender_domain', domain: 'acme.com' }, action: 'digest', priority: 'T3', digestSummaryTemplate: 'x' },
+    });
+
+    expect(res.body.matchingThreads).toHaveLength(0);
+    expect(mockThreadsGet).toHaveBeenCalledOnce();
   });
 
   it('returns 500 when a database error occurs while saving the rule', async () => {
@@ -565,6 +736,26 @@ describe('POST /api/agent/rules/:ruleId/apply', () => {
 
     const cached = await prisma.threadCache.findUnique({ where: { id: 'uncached-apply-th' } });
     expect(cached).not.toBeNull();
+  });
+
+  it('returns 400 when user has no Gmail tokens during apply', async () => {
+    const rule = await prisma.triageRule.create({
+      data: {
+        userId,
+        trigger: JSON.stringify({ type: 'sender_domain', domain: 'acme.com' }),
+        action: 'digest',
+        priority: 'T3',
+        digestSummaryTemplate: 'x',
+        source: 'agent',
+      },
+    });
+    await prisma.user.update({ where: { email: 'test@example.com' }, data: { accessToken: null } });
+
+    const res = await agent.post(`/api/agent/rules/${rule.id}/apply`).send({ threadIds: ['th-1'] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('No Gmail tokens');
+
+    await prisma.user.update({ where: { email: 'test@example.com' }, data: { accessToken: 'tok' } });
   });
 
   it('returns 500 when an unexpected error occurs during apply', async () => {
