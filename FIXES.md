@@ -91,7 +91,7 @@ Bugs first, then complexity/structural cleanup. Within each group, ordered by us
 **File:** `server/src/scheduler.ts:5–6`, `server/src/index.ts:13–16`  
 **Impact:** Only one user can ever have the scheduler running per server process. A second login does not start a scheduler for the second user.  
 **Fix:** Replace the boolean `started` flag with a `Map<string, ReturnType<typeof setInterval>>` keyed by `userId`. `startScheduler` becomes idempotent per user.  
-**Status:** [ ] Open
+**Status:** [x] Done
 
 ---
 
@@ -115,5 +115,5 @@ Bugs first, then complexity/structural cleanup. Within each group, ordered by us
 | S3 | Duplicated cache resolution logic | Done |
 | S4 | Remove lastMessageId and simplify triage pass | Done |
 | S6 | Unexplained 100ms sleep | Done |
-| S7 | Single-user scheduler flag | Open |
+| S7 | Single-user scheduler flag | Done |
 | S8 | Duplicate update logic in unmatched branch | Done |
