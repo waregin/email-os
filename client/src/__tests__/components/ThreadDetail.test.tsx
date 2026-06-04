@@ -128,6 +128,57 @@ describe('ThreadDetail message expansion interaction', () => {
     });
   });
 
+  it('updates iframe height when the iframe posts an iframe-height message', async () => {
+    mockGetThread.mockResolvedValueOnce({
+      id: 't1',
+      messages: [makeMessage({ id: 'm1', isUnread: true, htmlBody: '<p>HTML</p>' })],
+    });
+    const { container } = render(<ThreadDetail threadId="t1" />);
+    await waitFor(() => expect(container.querySelector('iframe')).toBeInTheDocument());
+
+    const iframe = container.querySelector('iframe') as HTMLIFrameElement;
+    window.dispatchEvent(new MessageEvent('message', {
+      data: { type: 'iframe-height', h: 300 },
+      source: iframe.contentWindow,
+    }));
+
+    expect(iframe.style.height).toBe('300px');
+  });
+
+  it('ignores a postMessage from a source other than the iframe', async () => {
+    mockGetThread.mockResolvedValueOnce({
+      id: 't1',
+      messages: [makeMessage({ id: 'm1', isUnread: true, htmlBody: '<p>HTML</p>' })],
+    });
+    const { container } = render(<ThreadDetail threadId="t1" />);
+    await waitFor(() => expect(container.querySelector('iframe')).toBeInTheDocument());
+
+    const iframe = container.querySelector('iframe') as HTMLIFrameElement;
+    window.dispatchEvent(new MessageEvent('message', {
+      data: { type: 'iframe-height', h: 300 },
+      source: window, // wrong source — not the iframe
+    }));
+
+    expect(iframe.style.height).toBe('');
+  });
+
+  it('does not update iframe height when h is falsy in the iframe-height message', async () => {
+    mockGetThread.mockResolvedValueOnce({
+      id: 't1',
+      messages: [makeMessage({ id: 'm1', isUnread: true, htmlBody: '<p>HTML</p>' })],
+    });
+    const { container } = render(<ThreadDetail threadId="t1" />);
+    await waitFor(() => expect(container.querySelector('iframe')).toBeInTheDocument());
+
+    const iframe = container.querySelector('iframe') as HTMLIFrameElement;
+    window.dispatchEvent(new MessageEvent('message', {
+      data: { type: 'iframe-height', h: 0 },
+      source: iframe.contentWindow,
+    }));
+
+    expect(iframe.style.height).toBe('');
+  });
+
   it('shows "(no content)" when a message has neither html nor plaintext body', async () => {
     mockGetThread.mockResolvedValueOnce({
       id: 't1',

@@ -38,34 +38,42 @@ export function parseProposal(content: string): { before: string; proposal: Prop
 export function describeTrigger(trigger: unknown): string {
   const raw = typeof trigger === 'string' ? trigger : JSON.stringify(trigger);
   try {
-    const t = (typeof trigger === 'string' ? JSON.parse(trigger) : trigger) as Record<string, string | undefined>;
-    const pick = (...keys: string[]) => keys.map((k) => t[k]).find((v) => v !== undefined && v !== '');
+    const t = (typeof trigger === 'string' ? JSON.parse(trigger) : trigger) as Record<string, unknown>;
+
+    function secondaryFilters(): string {
+      const any = t.subjectOrSnippetContainsAny as string[] | undefined;
+      const all = t.subjectOrSnippetContainsAll as string[] | undefined;
+      const parts: string[] = [];
+      if (any?.length) parts.push(`subject/snippet contains any of: ${any.map((s) => `"${s}"`).join(', ')}`);
+      if (all?.length) parts.push(`subject/snippet contains all of: ${all.map((s) => `"${s}"`).join(', ')}`);
+      return parts.length ? ` + ${parts.join(' + ')}` : '';
+    }
+
     switch (t.type) {
       case 'sender_domain': {
-        const domain = pick('domain');
-        const sub = pick('subjectContains');
-        return domain ? `From @${domain}${sub ? ` + subject contains "${sub}"` : ''}` : raw;
+        const domain = t.domain as string | undefined;
+        return domain ? `From @${domain}${secondaryFilters()}` : raw;
       }
       case 'sender': {
-        const sender = pick('sender', 'email', 'address');
-        const sub = pick('subjectContains');
-        return sender ? `From ${sender}${sub ? ` + subject contains "${sub}"` : ''}` : raw;
+        const sender = t.sender as string | undefined;
+        return sender ? `From ${sender}${secondaryFilters()}` : raw;
       }
-      case 'self_sent': {
-        const sub = pick('subjectContains');
-        return `Self-sent emails${sub ? ` with subject "${sub}"` : ''}`;
+      case 'self_sent':
+        return `Self-sent emails${secondaryFilters()}`;
+      case 'subject_or_snippet_contains_any': {
+        const patterns = t.patterns as string[] | undefined;
+        return patterns?.length
+          ? `Subject/snippet contains any of: ${patterns.map((p) => `"${p}"`).join(', ')}`
+          : raw;
       }
-      case 'subject_contains': {
-        const val = pick('subjectContains', 'contains', 'keyword', 'text');
-        return val ? `Subject contains "${val}"` : raw;
-      }
-      case 'subject_or_body_contains': {
-        const val = pick('contains', 'subjectContains', 'keyword', 'text');
-        const or = pick('orContains');
-        return val ? `Subject/body contains "${val}"${or ? ` and "${or}"` : ''}` : raw;
+      case 'subject_or_snippet_contains_all': {
+        const patterns = t.patterns as string[] | undefined;
+        return patterns?.length
+          ? `Subject/snippet contains all of: ${patterns.map((p) => `"${p}"`).join(', ')}`
+          : raw;
       }
       case 'address': {
-        const addr = pick('toAddress', 'address', 'email');
+        const addr = t.toAddress as string | undefined;
         return addr ? `Sent to ${addr}` : raw;
       }
       default: return raw;

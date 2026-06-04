@@ -6,10 +6,8 @@ import { z } from 'zod';
 import { matchThread, TRIGGER_TYPES } from './matcher';
 import type { ThreadData } from './matcher';
 import { buildDigestSummary } from './summarizer';
-import { extractAddress, extractDomain, extractBody, upsertCachedMessages } from './engine';
-import { CACHE_TTL_MS } from './constants';
-import { createOAuthClient, applyCredentials } from './utils/auth';
-import { makeHeaderGetter } from './utils/gmail';
+import { extractAddress, extractDomain, resolveThreadMetadata } from './utils/thread-cache';
+import { buildGmailClient } from './utils/auth';
 
 export const agentRouter = Router();
 
@@ -140,52 +138,10 @@ async function buildGmailClientForUser(userId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user?.accessToken) return null;
 
-  const auth = createOAuthClient();
-  applyCredentials(auth, user);
-  auth.on('tokens', async (tokens) => {
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        ...(tokens.access_token ? { accessToken: tokens.access_token } : {}),
-        ...(tokens.refresh_token ? { refreshToken: tokens.refresh_token } : {}),
-        ...(tokens.expiry_date ? { tokenExpiry: new Date(tokens.expiry_date) } : {}),
-      },
-    });
-  });
-
+  const auth = buildGmailClient(user);
   return { gmail: google.gmail({ version: 'v1', auth }), user };
 }
 
-async function fetchAndCacheThread(
-  gmail: ReturnType<typeof google.gmail>,
-  threadId: string,
-  userId: string,
-  snippet: string,
-): Promise<{ subject: string; sender: string; snippet: string; date: string; labelIds: string[]; toAddresses: string[]; htmlBody: string | null; plaintextBody: string | null }> {
-  const detail = await gmail.users.threads.get({ userId: 'me', id: threadId, format: 'full' });
-  const messages = detail.data.messages ?? [];
-  const last = messages[messages.length - 1];
-  const headers = last?.payload?.headers ?? [];
-  const h = makeHeaderGetter(headers);
-
-  const subject = h('Subject') || '(no subject)';
-  const sender = h('From');
-  const date = h('Date');
-  const resolvedSnippet = snippet || detail.data.snippet || '';
-  const labelIds = last?.labelIds ?? [];
-  const toHeader = h('To');
-  const toAddresses = toHeader ? toHeader.split(',').map((s) => s.trim()) : [];
-  const body = last?.payload ? extractBody(last.payload) : { html: null, plain: null };
-
-  await prisma.threadCache.upsert({
-    where: { id: threadId },
-    update: { userId, subject, sender, snippet: resolvedSnippet, date, labelIds: JSON.stringify(labelIds), toAddresses: JSON.stringify(toAddresses), htmlBody: body.html, plaintextBody: body.plain, cachedAt: new Date() },
-    create: { id: threadId, userId, subject, sender, snippet: resolvedSnippet, date, labelIds: JSON.stringify(labelIds), toAddresses: JSON.stringify(toAddresses), htmlBody: body.html, plaintextBody: body.plain },
-  });
-  await upsertCachedMessages(threadId, userId, messages);
-
-  return { subject, sender, snippet: resolvedSnippet, date, labelIds, toAddresses, htmlBody: body.html, plaintextBody: body.plain };
-}
 
 const triggerBaseSchema = z.object({
   subjectOrSnippetContainsAny: z.array(z.string()).optional(),
@@ -282,33 +238,8 @@ agentRouter.post('/rules', async (req, res) => {
       if (!raw.id) continue;
       if (decidedThreadIds.has(raw.id)) continue;
 
-      const cached = await prisma.threadCache.findUnique({ where: { id: raw.id } });
-      const ageMs = cached ? Date.now() - new Date(cached.cachedAt).getTime() : Infinity;
-      const stale = !cached || ageMs > CACHE_TTL_MS;
-
-      let subject: string;
-      let sender: string;
-      let snippet: string;
-      let date: string;
-      let labelIds: string[];
-      let toAddresses: string[];
-
-      if (stale) {
-        const fetched = await fetchAndCacheThread(gmail, raw.id, userId, raw.snippet ?? '');
-        subject = fetched.subject;
-        sender = fetched.sender;
-        snippet = fetched.snippet;
-        date = fetched.date;
-        labelIds = fetched.labelIds;
-        toAddresses = fetched.toAddresses;
-      } else {
-        subject = cached!.subject;
-        sender = cached!.sender;
-        snippet = cached!.snippet;
-        date = cached!.date;
-        labelIds = JSON.parse(cached!.labelIds) as string[];
-        toAddresses = cached!.toAddresses ? (JSON.parse(cached!.toAddresses) as string[]) : [];
-      }
+      const { subject, sender, snippet, date, labelIds, toAddresses } =
+        await resolveThreadMetadata(gmail, raw.id, userId, raw.snippet ?? '');
 
       const senderAddress = extractAddress(sender);
       const senderDomain = extractDomain(senderAddress);
@@ -381,29 +312,9 @@ agentRouter.post('/rules/:ruleId/apply', async (req, res) => {
 
       const cached = cacheMap.get(threadId);
 
-      let subject: string;
-      let sender: string;
-      let date: string;
-      let snippet: string;
-      let plaintextBody: string | null;
-      let htmlBody: string | null;
-
-      if (cached) {
-        subject = cached.subject;
-        sender = cached.sender;
-        date = cached.date;
-        snippet = cached.snippet;
-        plaintextBody = cached.plaintextBody ?? null;
-        htmlBody = cached.htmlBody ?? null;
-      } else {
-        const fetched = await fetchAndCacheThread(gmail, threadId, userId, '');
-        subject = fetched.subject;
-        sender = fetched.sender;
-        date = fetched.date;
-        snippet = fetched.snippet;
-        plaintextBody = fetched.plaintextBody;
-        htmlBody = fetched.htmlBody;
-      }
+      const { subject, sender, date, snippet, plaintextBody, htmlBody } = cached
+        ? { subject: cached.subject, sender: cached.sender, date: cached.date, snippet: cached.snippet, plaintextBody: cached.plaintextBody ?? null, htmlBody: cached.htmlBody ?? null }
+        : await resolveThreadMetadata(gmail, threadId, userId, '');
 
       const digestSummary = await buildDigestSummary(rule.digestSummaryTemplate, {
         subject,

@@ -71,6 +71,12 @@ describe('sender_domain trigger', () => {
     expect(matchThread(thread, [r])).not.toBeNull();
   });
 
+  it('is case-insensitive', () => {
+    const thread = { ...BASE_THREAD, senderDomain: 'CHASE.COM' };
+    const r = rule('r1', 'T3', { type: 'sender_domain', domain: 'chase.com' });
+    expect(matchThread(thread, [r])).not.toBeNull();
+  });
+
   it('does not match unrelated domain', () => {
     const r = rule('r1', 'T3', { type: 'sender_domain', domain: 'google.com' });
     expect(matchThread(BASE_THREAD, [r])).toBeNull();
@@ -114,8 +120,13 @@ describe('sender_domain trigger', () => {
 });
 
 describe('sender trigger', () => {
-  it('matches exact sender address when case matches (senderAddress is always lowercase)', () => {
+  it('matches exact sender address', () => {
     const r = rule('r1', 'T2', { type: 'sender', sender: 'alice@chase.com' });
+    expect(matchThread(BASE_THREAD, [r])).not.toBeNull();
+  });
+
+  it('is case-insensitive', () => {
+    const r = rule('r1', 'T2', { type: 'sender', sender: 'ALICE@CHASE.COM' });
     expect(matchThread(BASE_THREAD, [r])).not.toBeNull();
   });
 
@@ -191,6 +202,11 @@ describe('address trigger', () => {
 
   it('matches partial address (substring)', () => {
     const r = rule('r1', 'T4', { type: 'address', toAddress: 'example.com' });
+    expect(matchThread(BASE_THREAD, [r])).not.toBeNull();
+  });
+
+  it('is case-insensitive', () => {
+    const r = rule('r1', 'T4', { type: 'address', toAddress: 'ME@EXAMPLE.COM' });
     expect(matchThread(BASE_THREAD, [r])).not.toBeNull();
   });
 

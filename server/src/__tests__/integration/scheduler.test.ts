@@ -10,7 +10,7 @@ vi.mock('../../engine', () => ({
 describe('scheduler', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.resetModules(); // fresh `started = false` for each test
+    vi.resetModules(); // fresh activeSchedulers Map for each test
     mockRun.mockReset();
     mockRun.mockResolvedValue({ fetched: 0, processed: 0, matched: 0, unmatched: 0 });
   });
@@ -27,13 +27,23 @@ describe('scheduler', () => {
     expect(mockRun).toHaveBeenCalledTimes(1);
   });
 
-  it('is a singleton — second call with a different userId is ignored', async () => {
+  it('is idempotent per user — second call with the same userId is ignored', async () => {
+    const { startScheduler } = await import('../../scheduler');
+    startScheduler('user-1');
+    startScheduler('user-1');
+
+    expect(mockRun).toHaveBeenCalledTimes(1);
+    expect(mockRun).toHaveBeenCalledWith('user-1');
+  });
+
+  it('starts independent schedulers for different users', async () => {
     const { startScheduler } = await import('../../scheduler');
     startScheduler('user-1');
     startScheduler('user-2');
 
-    expect(mockRun).toHaveBeenCalledTimes(1);
+    expect(mockRun).toHaveBeenCalledTimes(2);
     expect(mockRun).toHaveBeenCalledWith('user-1');
+    expect(mockRun).toHaveBeenCalledWith('user-2');
   });
 
   it('fires runTriagePass again on the 3-minute interval', async () => {

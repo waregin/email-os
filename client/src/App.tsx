@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from './api';
 import type { Thread, DecisionWithThread, MatchingThread } from './api';
 import { ThreadDetail } from './components/ThreadDetail';
@@ -15,14 +15,9 @@ function updateFavicon(count: number): void {
   const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
   if (!link) return;
 
-  const label = count < 100 ? String(count) : '100+';
-  const textLength = label.length == 1 ? 15 : label.length == 2 ? 20 : 30;
-
-  if (!label) {
-    link.type = 'image/svg+xml';
-    link.href = '/favicon.svg';
-    return;
-  }
+  const n = Math.max(0, count);
+  const label = n < 100 ? String(n) : '100+';
+  const textLength = label.length === 1 ? 15 : label.length === 2 ? 20 : 30;
 
   const fontSize = 23;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
@@ -240,6 +235,11 @@ function MainApp() {
     }
   }
 
+  const handleTeachClose = useCallback(() => setTeachThread(null), []);
+  const handleDecisionsRefresh = useCallback(() => {
+    api.getDecisions().then((d) => setDecisions(dedupeDecisions(d))).catch(() => {});
+  }, []);
+
   const decidedThreadIds = new Set(
     [...decisions.T1, ...decisions.T2, ...decisions.T3, ...decisions.T4].map((d) => d.threadId),
   );
@@ -314,8 +314,8 @@ function MainApp() {
 
       <TeachPanel
         thread={teachThread}
-        onClose={() => setTeachThread(null)}
-        onDecisionsRefresh={() => api.getDecisions().then((d) => setDecisions(dedupeDecisions(d))).catch(() => {})}
+        onClose={handleTeachClose}
+        onDecisionsRefresh={handleDecisionsRefresh}
       />
     </div>
   );
@@ -391,7 +391,7 @@ function TeachPanel({
     if (rulePhase !== 'done') return;
     const id = setTimeout(() => { onDecisionsRefresh(); onClose(); }, 2000);
     return () => clearTimeout(id);
-  }, [rulePhase]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rulePhase, onDecisionsRefresh, onClose]);
 
   async function sendText(text: string) {
     if (loading || !thread) return;

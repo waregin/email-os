@@ -81,11 +81,13 @@ function matchesTrigger(thread: ThreadData, trigger: Trigger): boolean {
 
   switch (trigger.type) {
     case TRIGGER_TYPES.SENDER_DOMAIN: {
-      if (thread.senderDomain !== trigger.domain && !thread.senderDomain.endsWith(`.${trigger.domain}`)) return false;
+      const threadDomain = thread.senderDomain.toLowerCase();
+      const ruleDomain = trigger.domain.toLowerCase();
+      if (threadDomain !== ruleDomain && !threadDomain.endsWith(`.${ruleDomain}`)) return false;
       return checkSecondary(trigger);
     }
     case TRIGGER_TYPES.SENDER: {
-      if (thread.senderAddress !== trigger.sender) return false;
+      if (thread.senderAddress.toLowerCase() !== trigger.sender.toLowerCase()) return false;
       return checkSecondary(trigger);
     }
     case TRIGGER_TYPES.SELF_SENT: {
@@ -99,7 +101,7 @@ function matchesTrigger(thread: ThreadData, trigger: Trigger): boolean {
       return trigger.patterns.length > 0 && trigger.patterns.every(inEither);
     }
     case TRIGGER_TYPES.ADDRESS: {
-      return thread.toAddresses.some((addr) => addr.includes(trigger.toAddress));
+      return thread.toAddresses.some((addr) => addr.toLowerCase().includes(trigger.toAddress.toLowerCase()));
     }
   }
 }

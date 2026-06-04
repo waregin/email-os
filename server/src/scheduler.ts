@@ -2,11 +2,10 @@ import { runTriagePass } from './engine';
 
 const INTERVAL_MS = 3 * 60 * 1000; // every 3 minutes
 
-let started = false;
+const activeSchedulers = new Map<string, ReturnType<typeof setInterval>>();
 
 export function startScheduler(userId: string): void {
-  if (started) return;
-  started = true;
+  if (activeSchedulers.has(userId)) return;
 
   console.log(`Scheduler started for user ${userId}`);
 
@@ -16,5 +15,5 @@ export function startScheduler(userId: string): void {
       .catch(e => console.error('Triage pass failed:', e));
 
   run();
-  setInterval(run, INTERVAL_MS);
+  activeSchedulers.set(userId, setInterval(run, INTERVAL_MS));
 }
