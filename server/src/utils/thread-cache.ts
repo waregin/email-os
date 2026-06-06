@@ -18,6 +18,11 @@ export function extractSenderName(sender: string): string {
   return match?.[1]?.trim() ?? '';
 }
 
+export function normalizeListId(raw: string): string {
+  const match = /<([^>]+)>/.exec(raw);
+  return (match?.[1] ?? raw).trim().toLowerCase();
+}
+
 export function extractBody(payload: gmail_v1.Schema$MessagePart): { html: string | null; plain: string | null } {
   const mime = payload.mimeType ?? '';
 
@@ -62,6 +67,7 @@ export async function upsertCachedMessages(
         const body = msg.payload ? extractBody(msg.payload) : { html: null, plain: null };
         const msgLabelIds = msg.labelIds ?? [];
         const toHeader = h('To');
+        const rawListId = h('List-ID');
         return {
           id: msg.id!,
           threadId,
@@ -75,6 +81,7 @@ export async function upsertCachedMessages(
           plaintextBody: body.plain,
           isUnread: msgLabelIds.includes('UNREAD'),
           labelIds: JSON.stringify(msgLabelIds),
+          listId: rawListId ? normalizeListId(rawListId) : null,
           position,
           cachedAt: now,
         };
@@ -97,6 +104,7 @@ export async function resolveThreadMetadata(
   toAddresses: string[];
   htmlBody: string | null;
   plaintextBody: string | null;
+  listId: string | null;
 }> {
   const cached = await prisma.threadCache.findUnique({ where: { id: threadId } });
   const ageMs = cached ? Date.now() - new Date(cached.cachedAt).getTime() : Infinity;
@@ -116,15 +124,17 @@ export async function resolveThreadMetadata(
     const toHeader = h('To');
     const toAddresses = toHeader ? toHeader.split(',').map((s) => s.trim()) : [];
     const body = last?.payload ? extractBody(last.payload) : { html: null, plain: null };
+    const rawListId = h('List-ID');
+    const listId = rawListId ? normalizeListId(rawListId) : null;
 
     await prisma.threadCache.upsert({
       where: { id: threadId },
-      update: { userId, subject, sender, snippet: resolvedSnippet, date, labelIds: JSON.stringify(labelIds), toAddresses: JSON.stringify(toAddresses), htmlBody: body.html, plaintextBody: body.plain, cachedAt: new Date() },
-      create: { id: threadId, userId, subject, sender, snippet: resolvedSnippet, date, labelIds: JSON.stringify(labelIds), toAddresses: JSON.stringify(toAddresses), htmlBody: body.html, plaintextBody: body.plain },
+      update: { userId, subject, sender, snippet: resolvedSnippet, date, labelIds: JSON.stringify(labelIds), toAddresses: JSON.stringify(toAddresses), listId, htmlBody: body.html, plaintextBody: body.plain, cachedAt: new Date() },
+      create: { id: threadId, userId, subject, sender, snippet: resolvedSnippet, date, labelIds: JSON.stringify(labelIds), toAddresses: JSON.stringify(toAddresses), listId, htmlBody: body.html, plaintextBody: body.plain },
     });
     await upsertCachedMessages(threadId, userId, messages);
 
-    return { subject, sender, snippet: resolvedSnippet, date, labelIds, toAddresses, htmlBody: body.html, plaintextBody: body.plain };
+    return { subject, sender, snippet: resolvedSnippet, date, labelIds, toAddresses, listId, htmlBody: body.html, plaintextBody: body.plain };
   }
 
   return {
@@ -134,6 +144,7 @@ export async function resolveThreadMetadata(
     date: cached.date,
     labelIds: JSON.parse(cached.labelIds) as string[],
     toAddresses: cached.toAddresses ? (JSON.parse(cached.toAddresses) as string[]) : [],
+    listId: cached.listId ?? null,
     htmlBody: cached.htmlBody ?? null,
     plaintextBody: cached.plaintextBody ?? null,
   };

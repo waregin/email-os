@@ -25,6 +25,7 @@ const BASE_THREAD = {
   senderAddress: 'alice@chase.com',
   senderDomain: 'chase.com',
   senderName: 'Alice',
+  listId: null,
   toAddresses: ['me@example.com'],
   snippet: 'Your statement is ready',
   labelIds: ['INBOX', 'UNREAD'],
@@ -220,6 +221,31 @@ describe('address trigger', () => {
     const thread = { ...BASE_THREAD, toAddresses: [] };
     const r = rule('r1', 'T4', { type: 'address', toAddress: 'me@example.com' });
     expect(matchThread(thread, [r])).toBeNull();
+  });
+});
+
+describe('list_id trigger', () => {
+  it('matches when listId equals the rule value', () => {
+    const thread = { ...BASE_THREAD, listId: 'mylist.example.com' };
+    const r = rule('r1', 'T4', { type: 'list_id', listId: 'mylist.example.com' });
+    expect(matchThread(thread, [r])).not.toBeNull();
+  });
+
+  it('is case-insensitive', () => {
+    const thread = { ...BASE_THREAD, listId: 'mylist.example.com' };
+    const r = rule('r1', 'T4', { type: 'list_id', listId: 'MyList.Example.COM' });
+    expect(matchThread(thread, [r])).not.toBeNull();
+  });
+
+  it('does not match a different list id', () => {
+    const thread = { ...BASE_THREAD, listId: 'mylist.example.com' };
+    const r = rule('r1', 'T4', { type: 'list_id', listId: 'other.example.com' });
+    expect(matchThread(thread, [r])).toBeNull();
+  });
+
+  it('does not match when listId is null (non-list email)', () => {
+    const r = rule('r1', 'T4', { type: 'list_id', listId: 'mylist.example.com' });
+    expect(matchThread(BASE_THREAD, [r])).toBeNull();
   });
 });
 

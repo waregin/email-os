@@ -47,7 +47,7 @@ export async function runTriagePass(userId: string): Promise<{ fetched: number; 
 
     processed++;
 
-    const { subject, sender, snippet, date, labelIds, toAddresses, htmlBody, plaintextBody } =
+    const { subject, sender, snippet, date, labelIds, toAddresses, listId, htmlBody, plaintextBody } =
       await resolveThreadMetadata(gmail, raw.id, userId, raw.snippet ?? '');
 
     const senderAddress = extractAddress(sender);
@@ -60,6 +60,7 @@ export async function runTriagePass(userId: string): Promise<{ fetched: number; 
       senderAddress,
       senderDomain,
       senderName: extractSenderName(sender),
+      listId,
       toAddresses,
       snippet,
       labelIds,

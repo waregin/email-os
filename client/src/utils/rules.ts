@@ -77,6 +77,10 @@ export function describeTrigger(trigger: unknown): string {
           ? `Subject/snippet contains all of: ${patterns.map((p) => `"${p}"`).join(', ')}`
           : raw;
       }
+      case 'list_id': {
+        const listId = t.listId as string | undefined;
+        return listId ? `Mailing list: ${listId}` : raw;
+      }
       case 'address': {
         const addr = t.toAddress as string | undefined;
         return addr ? `Sent to ${addr}` : raw;

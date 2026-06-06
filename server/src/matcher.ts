@@ -7,6 +7,7 @@ export interface ThreadData {
   senderAddress: string;
   senderDomain: string;
   senderName: string;
+  listId: string | null;
   toAddresses: string[];
   snippet: string;
   labelIds: string[];
@@ -18,6 +19,7 @@ export const TRIGGER_TYPES = {
   SENDER: 'sender',
   SELF_SENT: 'self_sent',
   SENDER_NAME_CONTAINS: 'sender_name_contains',
+  LIST_ID: 'list_id',
   SUBJECT_OR_SNIPPET_CONTAINS_ANY: 'subject_or_snippet_contains_any',
   SUBJECT_OR_SNIPPET_CONTAINS_ALL: 'subject_or_snippet_contains_all',
   ADDRESS: 'address',
@@ -57,6 +59,11 @@ interface SenderNameContainsTrigger {
   pattern: string;
 }
 
+interface ListIdTrigger {
+  type: typeof TRIGGER_TYPES.LIST_ID;
+  listId: string;
+}
+
 interface AddressTrigger {
   type: typeof TRIGGER_TYPES.ADDRESS;
   toAddress: string;
@@ -67,6 +74,7 @@ type Trigger =
   | SenderTrigger
   | SelfSentTrigger
   | SenderNameContainsTrigger
+  | ListIdTrigger
   | SubjectOrSnippetContainsAnyTrigger
   | SubjectOrSnippetContainsAllTrigger
   | AddressTrigger;
@@ -112,6 +120,9 @@ function matchesTrigger(thread: ThreadData, trigger: Trigger): boolean {
     case TRIGGER_TYPES.SENDER_NAME_CONTAINS: {
       const name = thread.senderName.toLowerCase();
       return name.length > 0 && name.includes(trigger.pattern.toLowerCase());
+    }
+    case TRIGGER_TYPES.LIST_ID: {
+      return thread.listId !== null && thread.listId === trigger.listId.toLowerCase();
     }
     case TRIGGER_TYPES.ADDRESS: {
       return thread.toAddresses.some((addr) => addr.toLowerCase().includes(trigger.toAddress.toLowerCase()));

@@ -57,6 +57,7 @@ Match on sender or recipient (primary):
 - {"type":"sender","sender":"user@example.com"}
 - {"type":"self_sent"}
 - {"type":"sender_name_contains","pattern":"John Smith"}  ← fires if sender display name contains this string (case-insensitive)
+- {"type":"list_id","listId":"mylist.example.com"}  ← fires if the email's List-ID header matches exactly (reliable mailing list identity)
 - {"type":"address","toAddress":"list@example.com"}
 
 Optional secondary filter (sender_domain / sender / self_sent only):
@@ -70,7 +71,8 @@ Allowed fields — no others will be saved:
   sender         →  type, sender, subjectOrSnippetContainsAny, subjectOrSnippetContainsAll
   self_sent      →  type, subjectOrSnippetContainsAny, subjectOrSnippetContainsAll
   sender_name_contains  →  type, pattern
-  address        →  type, toAddress
+  list_id               →  type, listId
+  address               →  type, toAddress
 
 When modifying an existing rule, always include "existingRuleId" so the system updates it instead of creating a duplicate.
 After the RULE_PROPOSAL block you may continue with a brief explanation, but the JSON block must be valid and complete.`;
@@ -156,6 +158,7 @@ const triggerSchema = z.discriminatedUnion('type', [
   triggerBaseSchema.extend({ type: z.literal(TRIGGER_TYPES.SENDER), sender: z.string() }),
   triggerBaseSchema.extend({ type: z.literal(TRIGGER_TYPES.SELF_SENT) }),
   z.object({ type: z.literal(TRIGGER_TYPES.SENDER_NAME_CONTAINS), pattern: z.string().min(1) }),
+  z.object({ type: z.literal(TRIGGER_TYPES.LIST_ID), listId: z.string().min(1) }),
   z.object({ type: z.literal(TRIGGER_TYPES.SUBJECT_OR_SNIPPET_CONTAINS_ANY), patterns: z.array(z.string()).min(1) }),
   z.object({ type: z.literal(TRIGGER_TYPES.SUBJECT_OR_SNIPPET_CONTAINS_ALL), patterns: z.array(z.string()).min(1) }),
   z.object({ type: z.literal(TRIGGER_TYPES.ADDRESS), toAddress: z.string() }),
@@ -244,7 +247,7 @@ agentRouter.post('/rules', async (req, res) => {
       if (!raw.id) continue;
       if (decidedThreadIds.has(raw.id)) continue;
 
-      const { subject, sender, snippet, date, labelIds, toAddresses } =
+      const { subject, sender, snippet, date, labelIds, toAddresses, listId } =
         await resolveThreadMetadata(gmail, raw.id, userId, raw.snippet ?? '');
 
       const senderAddress = extractAddress(sender);
@@ -257,6 +260,7 @@ agentRouter.post('/rules', async (req, res) => {
         senderAddress,
         senderDomain,
         senderName: extractSenderName(sender),
+        listId,
         toAddresses,
         snippet,
         labelIds,
