@@ -129,6 +129,27 @@ describe('MainApp decision handlers', () => {
     expect(mockApi.confirmAll).toHaveBeenCalledWith(['d1'], 'T1');
   });
 
+  it('Confirm all on T3 calls api.confirmAll and removes items from the panel', async () => {
+    const user = userEvent.setup();
+    mockApi.getDecisions.mockResolvedValue({
+      ...EMPTY,
+      T3: [
+        decision({ decisionId: 'd1', threadId: 't1', priority: 'T3', digestSummary: 'summary one' }),
+        decision({ decisionId: 'd2', threadId: 't2', priority: 'T3', digestSummary: 'summary two' }),
+      ],
+    });
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('T3 Summarized')).toBeInTheDocument());
+    await user.click(screen.getByText('T3 Summarized'));
+    await waitFor(() => expect(screen.getByText('summary one')).toBeInTheDocument());
+
+    await user.click(screen.getByText('Confirm all'));
+
+    expect(mockApi.confirmAll).toHaveBeenCalledWith(['d1', 'd2'], 'T3');
+    await waitFor(() => expect(screen.queryByText('summary one')).not.toBeInTheDocument());
+    expect(screen.queryByText('summary two')).not.toBeInTheDocument();
+  });
+
   it('followed-up item lands in date-sorted position in T2, not prepended at top', async () => {
     const user = userEvent.setup();
     mockApi.getDecisions.mockResolvedValue({

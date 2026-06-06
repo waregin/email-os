@@ -97,6 +97,15 @@ describe('sortTierItems', () => {
     expect(sorted.map((i) => i.decisionId)).toEqual(['d2', 'd1']);
   });
 
+  it('treats items with unparseable dates as epoch 0 (sorts them first)', () => {
+    const items = [
+      makeDecision({ decisionId: 'd1', threadId: 'a', thread: { subject: '', sender: '', date: '2024-06-01T00:00:00Z', snippet: '', unreadCount: 0, messageCount: 1 } }),
+      makeDecision({ decisionId: 'd2', threadId: 'b', thread: { subject: '', sender: '', date: '', snippet: '', unreadCount: 0, messageCount: 1 } }),
+    ];
+    const sorted = sortTierItems(items);
+    expect(sorted[0]!.decisionId).toBe('d2'); // empty date → 0, sorts first
+  });
+
   it('does not mutate the original array', () => {
     const items = [
       makeDecision({ decisionId: 'd1', threadId: 'a' }),
@@ -134,6 +143,15 @@ describe('dedupeDecisions', () => {
     ];
     const labels = buildGroups(items).map((g) => g.label);
     expect(labels).toEqual(['Apple', 'Zebra', 'Other']);
+  });
+
+  it('places a named group before "Other" regardless of insertion order', () => {
+    const items = [
+      makeDecision({ decisionId: 'd1', threadId: 'a', categoryLabel: 'Newsletters' }),
+      makeDecision({ decisionId: 'd2', threadId: 'b', categoryLabel: null }), // Other inserted first in map
+    ];
+    const labels = buildGroups(items).map((g) => g.label);
+    expect(labels).toEqual(['Newsletters', 'Other']);
   });
 
   it('sorts items within a group by thread date ascending', () => {

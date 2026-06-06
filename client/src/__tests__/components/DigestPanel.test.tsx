@@ -100,6 +100,18 @@ describe('DigestPanel button sets per tier', () => {
     expect(screen.queryByText('Followup')).not.toBeInTheDocument();
   });
 
+  it('userFlagged T2 item shows only Done (no Confirm, no Wrong) and Done calls onDone', async () => {
+    const user = userEvent.setup();
+    const props = defaultProps();
+    const items = [makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T2', userFlagged: true })];
+    render(<DigestPanel tier="T2" items={items} isOpen={true} {...props} />);
+    expect(screen.getByText('Done')).toBeInTheDocument();
+    expect(screen.queryByText('Confirm')).not.toBeInTheDocument();
+    expect(screen.queryByText('Wrong')).not.toBeInTheDocument();
+    await user.click(screen.getByText('Done'));
+    expect(props.onDone).toHaveBeenCalledWith('d1');
+  });
+
   it('T3 shows Confirm and Followup but not Done', () => {
     const items = [makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T3' })];
     render(<DigestPanel tier="T3" items={items} isOpen={true} {...defaultProps()} />);
@@ -141,6 +153,15 @@ describe('DigestPanel actions', () => {
     render(<DigestPanel tier="T1" items={items} isOpen={true} {...props} />);
     await user.click(screen.getByText('Done'));
     expect(props.onDone).toHaveBeenCalledWith('d1');
+  });
+
+  it('expanding a T1 item calls onViewThread with the thread id', async () => {
+    const user = userEvent.setup();
+    const props = defaultProps();
+    const items = [makeItem({ decisionId: 'd1', threadId: 't-view', priority: 'T1', digestSummary: 'click me' })];
+    render(<DigestPanel tier="T1" items={items} isOpen={true} {...props} />);
+    await user.click(screen.getByText('click me'));
+    expect(props.onViewThread).toHaveBeenCalledWith('t-view');
   });
 
   it('clicking Followup calls onFollowup', async () => {
@@ -228,6 +249,17 @@ describe('DigestPanel T4 group expansion', () => {
       thread: { subject, sender: 'a@b.com', date: '2024-01-01T00:00:00Z', snippet: 'snip', unreadCount: 0, messageCount: 1 },
     });
   }
+
+  it('clicking a T4 item inside an expanded group calls onViewThread', async () => {
+    const user = userEvent.setup();
+    const props = defaultProps();
+    const items = [t4Item('d1', 't-view', 'Newsletters', 'Weekly Digest')];
+    render(<DigestPanel tier="T4" items={items} isOpen={true} {...props} />);
+
+    await user.click(screen.getByText(/Newsletters/));
+    await user.click(screen.getByText('Weekly Digest'));
+    expect(props.onViewThread).toHaveBeenCalledWith('t-view');
+  });
 
   it('expands a category group to reveal its items and a per-group Confirm all', async () => {
     const user = userEvent.setup();
