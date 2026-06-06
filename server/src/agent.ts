@@ -102,7 +102,7 @@ agentRouter.post('/teach', async (req, res) => {
     const userId = req.session.userId;
     if (userId) {
       const existingRules = await prisma.triageRule.findMany({
-        where: { userId },
+        where: { userId, isActive: true },
         orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
       });
       if (existingRules.length > 0) {
@@ -197,13 +197,13 @@ agentRouter.post('/rules', async (req, res) => {
     let savedRule;
     if (rule.existingRuleId) {
       const existing = await prisma.triageRule.findUnique({ where: { id: rule.existingRuleId } });
-      if (!existing || existing.userId !== userId) {
+      if (!existing || existing.userId !== userId || !existing.isActive) {
         res.status(404).json({ error: 'Rule not found' });
         return;
       }
       savedRule = await prisma.triageRule.update({ where: { id: rule.existingRuleId }, data: ruleData });
     } else {
-      savedRule = await prisma.triageRule.create({ data: { userId, source: 'agent', ...ruleData } });
+      savedRule = await prisma.triageRule.create({ data: { userId, source: 'taught', ...ruleData } });
     }
 
     const gmailCtx = await buildGmailClientForUser(userId);
@@ -280,7 +280,7 @@ agentRouter.post('/rules/:ruleId/apply', async (req, res) => {
     const { threadIds } = req.body as { threadIds: string[] };
 
     const rule = await prisma.triageRule.findUnique({ where: { id: ruleId } });
-    if (!rule || rule.userId !== userId) {
+    if (!rule || rule.userId !== userId || !rule.isActive) {
       res.status(404).json({ error: 'Rule not found' });
       return;
     }

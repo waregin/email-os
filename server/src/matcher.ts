@@ -63,7 +63,8 @@ type Trigger =
   | SubjectOrSnippetContainsAllTrigger
   | AddressTrigger;
 
-const RULE_PRIORITY_ORDER = ['T1', 'T2', 'T3', 'T4'];
+const RULE_PRIORITY_ORDER = ['T1', 'T2', 'T3', 'T4', 'T5'];
+const SOURCE_RANK: Record<string, number> = { manual: 1, taught: 2, ai_guess: 3 };
 
 function matchesTrigger(thread: ThreadData, trigger: Trigger): boolean {
   const subjectLower = thread.subject.toLowerCase();
@@ -111,6 +112,9 @@ export function matchThread(thread: ThreadData, rules: TriageRuleRecord[]): Tria
     const pa = RULE_PRIORITY_ORDER.indexOf(a.priority);
     const pb = RULE_PRIORITY_ORDER.indexOf(b.priority);
     if (pa !== pb) return pa - pb;
+    const sa = SOURCE_RANK[a.source] ?? 99;
+    const sb = SOURCE_RANK[b.source] ?? 99;
+    if (sa !== sb) return sa - sb;
     return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
   });
 

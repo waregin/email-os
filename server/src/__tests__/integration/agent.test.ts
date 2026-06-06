@@ -125,7 +125,7 @@ describe('POST /api/agent/teach', () => {
         action: 'digest',
         priority: 'T3',
         digestSummaryTemplate: 'Invoice: {amount}',
-        source: 'agent',
+        source: 'taught',
       },
     });
 
@@ -138,6 +138,41 @@ describe('POST /api/agent/teach', () => {
 
     const call = mockCreate.mock.calls[0]![0] as { system: string };
     expect(call.system).toContain('acme.com');
+  });
+
+  it('does not inject inactive rules into the system prompt', async () => {
+    await prisma.triageRule.create({
+      data: {
+        userId,
+        trigger: JSON.stringify({ type: 'sender_domain', domain: 'active.com' }),
+        action: 'digest',
+        priority: 'T3',
+        digestSummaryTemplate: '{subject}',
+        source: 'taught',
+        isActive: true,
+      },
+    });
+    await prisma.triageRule.create({
+      data: {
+        userId,
+        trigger: JSON.stringify({ type: 'sender_domain', domain: 'inactive.com' }),
+        action: 'digest',
+        priority: 'T3',
+        digestSummaryTemplate: '{subject}',
+        source: 'taught',
+        isActive: false,
+      },
+    });
+
+    mockCreate.mockResolvedValueOnce({ content: [{ type: 'text', text: 'ok' }] });
+    await agent.post('/api/agent/teach').send({
+      messages: [{ role: 'user', content: 'help' }],
+      threadContext: THREAD_CONTEXT,
+    });
+
+    const call = mockCreate.mock.calls[0]![0] as { system: string };
+    expect(call.system).toContain('active.com');
+    expect(call.system).not.toContain('inactive.com');
   });
 
   it('returns 500 when Anthropic API throws', async () => {
@@ -184,7 +219,7 @@ describe('POST /api/agent/teach', () => {
         priority: 'T1',
         digestSummaryTemplate: 'Boss: {subject}',
         notes: 'VIP sender — never delay',
-        source: 'agent',
+        source: 'taught',
       },
     });
     mockCreate.mockResolvedValueOnce({ content: [{ type: 'text', text: 'ok' }] });
@@ -229,7 +264,7 @@ describe('POST /api/agent/rules', () => {
         action: 'digest',
         priority: 'T4',
         digestSummaryTemplate: 'old template',
-        source: 'agent',
+        source: 'taught',
       },
     });
 
@@ -312,6 +347,44 @@ describe('POST /api/agent/rules', () => {
     await prisma.user.update({ where: { email: 'test@example.com' }, data: { accessToken: 'tok' } });
   });
 
+  it('creates new rules with source="taught"', async () => {
+    const res = await agent.post('/api/agent/rules').send({
+      rule: {
+        trigger: { type: 'sender_domain', domain: 'acme.com' },
+        action: 'digest',
+        priority: 'T3',
+        digestSummaryTemplate: '{subject}',
+      },
+    });
+    expect(res.status).toBe(200);
+    const rule = await prisma.triageRule.findUnique({ where: { id: res.body.ruleId } });
+    expect(rule!.source).toBe('taught');
+  });
+
+  it('returns 404 when existingRuleId is inactive', async () => {
+    const existing = await prisma.triageRule.create({
+      data: {
+        userId,
+        trigger: JSON.stringify({ type: 'sender_domain', domain: 'old.com' }),
+        action: 'digest',
+        priority: 'T3',
+        digestSummaryTemplate: 'old',
+        source: 'taught',
+        isActive: false,
+      },
+    });
+    const res = await agent.post('/api/agent/rules').send({
+      rule: {
+        existingRuleId: existing.id,
+        trigger: { type: 'sender_domain', domain: 'new.com' },
+        action: 'digest',
+        priority: 'T3',
+        digestSummaryTemplate: 'new',
+      },
+    });
+    expect(res.status).toBe(404);
+  });
+
   it('returns 404 when existingRuleId belongs to another user', async () => {
     const other = await prisma.user.create({ data: { email: 'other2@example.com', name: 'Other' } });
     const rule = await prisma.triageRule.create({
@@ -321,7 +394,7 @@ describe('POST /api/agent/rules', () => {
         action: 'digest',
         priority: 'T3',
         digestSummaryTemplate: 'x',
-        source: 'agent',
+        source: 'taught',
       },
     });
 
@@ -628,7 +701,7 @@ describe('POST /api/agent/rules/:ruleId/apply', () => {
         action: 'digest',
         priority: 'T3',
         digestSummaryTemplate: 'Invoice: {subject}',
-        source: 'agent',
+        source: 'taught',
       },
     });
     await prisma.threadCache.create({
@@ -664,7 +737,7 @@ describe('POST /api/agent/rules/:ruleId/apply', () => {
         action: 'digest',
         priority: 'T3',
         digestSummaryTemplate: 'x',
-        source: 'agent',
+        source: 'taught',
       },
     });
     // wasCorrect: true ensures the blocking decision filter `wasCorrect: { not: false }` matches
@@ -688,7 +761,7 @@ describe('POST /api/agent/rules/:ruleId/apply', () => {
         action: 'digest',
         priority: 'T2',
         digestSummaryTemplate: 'Fixed: {subject}',
-        source: 'agent',
+        source: 'taught',
       },
     });
     const wrongDecision = await prisma.triageDecision.create({
@@ -732,7 +805,7 @@ describe('POST /api/agent/rules/:ruleId/apply', () => {
         action: 'digest',
         priority: 'T3',
         digestSummaryTemplate: 'Summary',
-        source: 'agent',
+        source: 'taught',
       },
     });
     // No threadCache entry — fetchAndCacheThread must be called
@@ -777,7 +850,7 @@ describe('POST /api/agent/rules/:ruleId/apply', () => {
         action: 'digest',
         priority: 'T3',
         digestSummaryTemplate: 'x',
-        source: 'agent',
+        source: 'taught',
       },
     });
     await prisma.user.update({ where: { email: 'test@example.com' }, data: { accessToken: null } });
@@ -797,7 +870,7 @@ describe('POST /api/agent/rules/:ruleId/apply', () => {
         action: 'digest',
         priority: 'T3',
         digestSummaryTemplate: 'x',
-        source: 'agent',
+        source: 'taught',
       },
     });
     await prisma.threadCache.create({

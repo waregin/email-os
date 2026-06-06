@@ -13,7 +13,7 @@ export async function runTriagePass(userId: string): Promise<{ fetched: number; 
   }
 
   const rules = await prisma.triageRule.findMany({
-    where: { userId },
+    where: { userId, isActive: true },
     orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
   });
 

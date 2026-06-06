@@ -90,6 +90,74 @@ describe('runTriagePass', () => {
     expect(mockThreadsList).not.toHaveBeenCalled();
   });
 
+  it('ignores inactive rules — thread is unmatched', async () => {
+    const user = await createTestUser();
+    await prisma.triageRule.create({
+      data: {
+        userId: user.id,
+        trigger: JSON.stringify({ type: 'sender_domain', domain: 'acme.com' }),
+        action: 'digest',
+        priority: 'T3',
+        digestSummaryTemplate: '{subject}',
+        source: 'taught',
+        isActive: false,
+      },
+    });
+    mockThreadsList.mockResolvedValueOnce({
+      data: { threads: [{ id: 'th-inactive', snippet: 'x' }], nextPageToken: null },
+    });
+    mockThreadsGet.mockResolvedValueOnce(makeGmailThread('th-inactive', 'Invoice', 'billing@acme.com'));
+
+    const result = await runTriagePass(user.id);
+    expect(result.matched).toBe(0);
+    expect(result.unmatched).toBe(1);
+  });
+
+  it('prefers a taught rule over an ai_guess rule for the same thread', async () => {
+    const user = await createTestUser();
+    // ai_guess rule created first — would win under old time-only ordering
+    await prisma.triageRule.create({
+      data: {
+        userId: user.id,
+        trigger: JSON.stringify({ type: 'sender_domain', domain: 'acme.com' }),
+        action: 'digest',
+        priority: 'T3',
+        digestSummaryTemplate: 'AI guess',
+        source: 'ai_guess',
+        isActive: true,
+      },
+    });
+    await createTestRule(user.id, { trigger: { type: 'sender_domain', domain: 'acme.com' }, priority: 'T3' });
+
+    mockThreadsList.mockResolvedValueOnce({
+      data: { threads: [{ id: 'th-rank', snippet: 'x' }], nextPageToken: null },
+    });
+    mockThreadsGet.mockResolvedValueOnce(makeGmailThread('th-rank', 'Invoice', 'billing@acme.com'));
+
+    await runTriagePass(user.id);
+
+    const decision = await prisma.triageDecision.findFirst({ where: { threadId: 'th-rank', userId: user.id } });
+    expect(decision).not.toBeNull();
+    const rule = await prisma.triageRule.findUnique({ where: { id: decision!.ruleId! } });
+    expect(rule!.source).toBe('taught');
+  });
+
+  it('matches a T1 rule before a T2 rule for the same thread', async () => {
+    const user = await createTestUser();
+    await createTestRule(user.id, { trigger: { type: 'sender_domain', domain: 'acme.com' }, priority: 'T2' });
+    await createTestRule(user.id, { trigger: { type: 'sender_domain', domain: 'acme.com' }, priority: 'T1' });
+
+    mockThreadsList.mockResolvedValueOnce({
+      data: { threads: [{ id: 'th-tier', snippet: 'x' }], nextPageToken: null },
+    });
+    mockThreadsGet.mockResolvedValueOnce(makeGmailThread('th-tier', 'Urgent', 'billing@acme.com'));
+
+    await runTriagePass(user.id);
+
+    const decision = await prisma.triageDecision.findFirst({ where: { threadId: 'th-tier', userId: user.id } });
+    expect(decision!.priority).toBe('T1');
+  });
+
   it('returns correct stats when no rules exist', async () => {
     const user = await createTestUser();
     mockThreadsList.mockResolvedValueOnce({
