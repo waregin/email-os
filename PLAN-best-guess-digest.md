@@ -524,7 +524,7 @@ When a user clicks Followup on a T3/T4 item, open a small inline text input so t
 | ~~4~~ | ~~Fix: thread sorting T1–T4 (T5 inherits same logic when built in step 15)~~ ✓ |
 | ~~5~~ | ~~Feature: sender display name trigger~~ ✓ |
 | ~~6~~ | ~~Feature: mailing list header trigger~~ ✓ |
-| 7 | Phase 2: `classifier.ts` (batched) + unit tests |
+| ~~7~~ | ~~Phase 2: `classifier.ts` (batched) + unit tests~~ ✓ |
 | 8 | Phase 3: Triage pass AI fallback + T5 decisions + integration tests |
 | 9 | Phase 4: Prompt caching + conflict avoidance + audit trail in `/rules` endpoint |
 | 10 | Fix: links open in new tab (`prepareHtml`) |
