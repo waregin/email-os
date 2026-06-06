@@ -129,6 +129,39 @@ describe('MainApp decision handlers', () => {
     expect(mockApi.confirmAll).toHaveBeenCalledWith(['d1'], 'T1');
   });
 
+  it('followed-up item lands in date-sorted position in T2, not prepended at top', async () => {
+    const user = userEvent.setup();
+    mockApi.getDecisions.mockResolvedValue({
+      ...EMPTY,
+      T2: [
+        decision({ decisionId: 'd-old', threadId: 't-old', priority: 'T2', thread: { subject: 'Old', sender: 'Old <old@example.com>', date: '2024-01-01T00:00:00Z', snippet: '', unreadCount: 0, messageCount: 1 } }),
+        decision({ decisionId: 'd-new', threadId: 't-new', priority: 'T2', thread: { subject: 'New', sender: 'New <new@example.com>', date: '2024-12-01T00:00:00Z', snippet: '', unreadCount: 0, messageCount: 1 } }),
+      ],
+      T3: [
+        decision({ decisionId: 'd-mid', threadId: 't-mid', priority: 'T3', digestSummary: 'Mid item', thread: { subject: 'Mid', sender: 'Mid <mid@example.com>', date: '2024-06-01T00:00:00Z', snippet: '', unreadCount: 0, messageCount: 1 } }),
+      ],
+    });
+    render(<App />);
+
+    // Open T3 and follow up the item
+    await waitFor(() => expect(screen.getByText('T3 Summarized')).toBeInTheDocument());
+    await user.click(screen.getByText('T3 Summarized'));
+    await waitFor(() => expect(screen.getByText('Mid item')).toBeInTheDocument());
+    await user.click(screen.getByText('Followup'));
+
+    // Open T2 and check that items appear oldest-first (Old, Mid, New)
+    await waitFor(() => expect(screen.getByText('T2 Action Required')).toBeInTheDocument());
+    await user.click(screen.getByText('T2 Action Required'));
+    await waitFor(() => {
+      const senders = screen.getAllByText(/Old|Mid|New/).map((el) => el.textContent);
+      const oldIdx = senders.findIndex((s) => s?.includes('Old'));
+      const midIdx = senders.findIndex((s) => s?.includes('Mid'));
+      const newIdx = senders.findIndex((s) => s?.includes('New'));
+      expect(oldIdx).toBeLessThan(midIdx);
+      expect(midIdx).toBeLessThan(newIdx);
+    });
+  });
+
   it('following up a T3 item calls api.followupDecision and removes it from the T3 panel', async () => {
     const user = userEvent.setup();
     mockApi.getDecisions.mockResolvedValue({

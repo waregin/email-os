@@ -521,7 +521,7 @@ When a user clicks Followup on a T3/T4 item, open a small inline text input so t
 | ~~1~~ | ~~Migration SQL (`agent` → `taught`)~~ ✓ |
 | ~~2~~ | ~~Prisma migration: `isActive`, `parentId`, `pendingSuggestion` on `TriageRule`; `listId` on `ThreadCache` / `CachedMessage`~~ ✓ |
 | ~~3~~ | ~~Phase 1: Rule priority ordering; add `isActive: true` filter to all rule queries~~ ✓ |
-| 4 | Fix: thread sorting T1–T4 (T5 inherits same logic when built in step 15) |
+| ~~4~~ | ~~Fix: thread sorting T1–T4 (T5 inherits same logic when built in step 15)~~ ✓ |
 | 5 | Feature: sender display name trigger |
 | 6 | Feature: mailing list header trigger |
 | 7 | Phase 2: `classifier.ts` (batched) + unit tests |

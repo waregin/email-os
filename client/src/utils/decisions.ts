@@ -7,6 +7,14 @@ export type DecisionsState = {
   T4: DecisionWithThread[];
 };
 
+// Sort T1/T2/T3/T5 items oldest thread date first.
+// T4 is intentionally excluded — buildGroups handles T4 ordering client-side.
+export function sortTierItems(items: DecisionWithThread[]): DecisionWithThread[] {
+  return [...items].sort(
+    (a, b) => (new Date(a.thread.date).getTime() || 0) - (new Date(b.thread.date).getTime() || 0),
+  );
+}
+
 // Keep the first decision per threadId within each tier — guards against DB duplicates
 // created by a race between the agent apply endpoint and the scheduled triage pass.
 export function dedupeDecisions(d: DecisionsState): DecisionsState {
@@ -18,7 +26,12 @@ export function dedupeDecisions(d: DecisionsState): DecisionsState {
       return true;
     });
   };
-  return { T1: dedup(d.T1), T2: dedup(d.T2), T3: dedup(d.T3), T4: dedup(d.T4) };
+  return {
+    T1: sortTierItems(dedup(d.T1)),
+    T2: sortTierItems(dedup(d.T2)),
+    T3: sortTierItems(dedup(d.T3)),
+    T4: dedup(d.T4),
+  };
 }
 
 export function buildGroups(items: DecisionWithThread[]) {

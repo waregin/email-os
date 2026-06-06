@@ -145,6 +145,18 @@ describe('GET /api/gmail/decisions', () => {
     expect(decision.thread.messageCount).toBe(2);
     expect(decision.thread.unreadCount).toBe(1);
   });
+
+  it('does not sort T4 decisions server-side (client handles T4 ordering via buildGroups)', async () => {
+    for (const [id, date] of [['th-t4-a', '2024-06-01'], ['th-t4-b', '2024-01-01']]) {
+      await prisma.threadCache.create({
+        data: { id, userId, subject: id, sender: 's@x.com', snippet: '', date, labelIds: '[]' },
+      });
+      await createDecision(id, 'T4');
+    }
+
+    const res = await agent.get('/api/gmail/decisions');
+    expect((res.body.T4 as unknown[]).length).toBe(2);
+  });
 });
 
 describe('GET /api/gmail/decisions error handling', () => {

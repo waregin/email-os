@@ -4,7 +4,7 @@ import type { Thread, DecisionWithThread, MatchingThread } from './api';
 import { ThreadDetail } from './components/ThreadDetail';
 import { DigestPanel } from './components/DigestPanel';
 import { parseSender, formatDate } from './utils/text';
-import { dedupeDecisions } from './utils/decisions';
+import { dedupeDecisions, sortTierItems } from './utils/decisions';
 import type { DecisionsState } from './utils/decisions';
 import { parseProposal, describeTrigger } from './utils/rules';
 import type { ProposedRule } from './utils/rules';
@@ -198,7 +198,7 @@ function MainApp() {
       return {
         ...prev,
         [fromTier]: prev[fromTier].filter((d) => d.decisionId !== decisionId),
-        T2: [{ ...found, userFlagged: true, priority: 'T2' }, ...prev.T2],
+        T2: sortTierItems([{ ...found, userFlagged: true, priority: 'T2' }, ...prev.T2]),
       };
     });
     api.followupDecision(decisionId).catch(() => {});
