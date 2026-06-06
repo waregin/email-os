@@ -52,6 +52,22 @@ Let me know if that works.`;
     const result = parseProposal(content);
     expect(result.after).toBe('trailing note');
   });
+
+  it('preserves categoryLabel when present in the proposal JSON', () => {
+    const content = `RULE_PROPOSAL:
+{"trigger":{"type":"sender_domain","domain":"news.com"},"action":"digest","priority":"T4","categoryLabel":"Newsletters","digestSummaryTemplate":"{subject}"}`;
+    const result = parseProposal(content);
+    expect(result.proposal).not.toBeNull();
+    expect(result.proposal!.categoryLabel).toBe('Newsletters');
+  });
+
+  it('leaves categoryLabel undefined when absent from the proposal JSON', () => {
+    const content = `RULE_PROPOSAL:
+{"trigger":{"type":"sender_domain","domain":"acme.com"},"action":"digest","priority":"T3","digestSummaryTemplate":"{subject}"}`;
+    const result = parseProposal(content);
+    expect(result.proposal).not.toBeNull();
+    expect(result.proposal!.categoryLabel).toBeUndefined();
+  });
 });
 
 describe('describeTrigger', () => {

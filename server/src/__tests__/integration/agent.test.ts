@@ -263,6 +263,37 @@ describe('POST /api/agent/rules', () => {
     expect(res.body.matchingThreads).toEqual([]);
   });
 
+  it('persists categoryLabel when saving a T4 rule', async () => {
+    const res = await agent.post('/api/agent/rules').send({
+      rule: {
+        trigger: { type: 'sender_domain', domain: 'newsletters.com' },
+        action: 'digest',
+        priority: 'T4',
+        categoryLabel: 'Newsletters',
+        digestSummaryTemplate: '{subject}',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const rule = await prisma.triageRule.findUnique({ where: { id: res.body.ruleId } });
+    expect(rule!.categoryLabel).toBe('Newsletters');
+  });
+
+  it('saves null categoryLabel when field is omitted', async () => {
+    const res = await agent.post('/api/agent/rules').send({
+      rule: {
+        trigger: { type: 'sender_domain', domain: 'acme.com' },
+        action: 'digest',
+        priority: 'T3',
+        digestSummaryTemplate: '{subject}',
+      },
+    });
+
+    expect(res.status).toBe(200);
+    const rule = await prisma.triageRule.findUnique({ where: { id: res.body.ruleId } });
+    expect(rule!.categoryLabel).toBeNull();
+  });
+
   it('returns empty matchingThreads when user has no Gmail access token', async () => {
     await prisma.user.update({ where: { email: 'test@example.com' }, data: { accessToken: null } });
 
