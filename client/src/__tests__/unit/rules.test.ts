@@ -103,6 +103,15 @@ describe('describeTrigger', () => {
       .toBe('Subject/snippet contains all of: "receipt", "order"');
   });
 
+  it('describes a sender_name_contains trigger', () => {
+    expect(describeTrigger({ type: 'sender_name_contains', pattern: 'John Smith' })).toBe('Sender name contains "John Smith"');
+  });
+
+  it('falls back to raw JSON for sender_name_contains with no pattern field', () => {
+    const trigger = { type: 'sender_name_contains' };
+    expect(describeTrigger(trigger)).toBe(JSON.stringify(trigger));
+  });
+
   it('describes an address trigger', () => {
     expect(describeTrigger({ type: 'address', toAddress: 'list@example.com' })).toBe('Sent to list@example.com');
   });

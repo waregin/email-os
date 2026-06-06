@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { matchThread, TRIGGER_TYPES } from './matcher';
 import type { ThreadData } from './matcher';
 import { buildDigestSummary } from './summarizer';
-import { extractAddress, extractDomain, resolveThreadMetadata } from './utils/thread-cache';
+import { extractAddress, extractDomain, extractSenderName, resolveThreadMetadata } from './utils/thread-cache';
 import { buildGmailClient } from './utils/auth';
 
 export const agentRouter = Router();
@@ -56,6 +56,7 @@ Match on sender or recipient (primary):
 - {"type":"sender_domain","domain":"example.com"}
 - {"type":"sender","sender":"user@example.com"}
 - {"type":"self_sent"}
+- {"type":"sender_name_contains","pattern":"John Smith"}  ← fires if sender display name contains this string (case-insensitive)
 - {"type":"address","toAddress":"list@example.com"}
 
 Optional secondary filter (sender_domain / sender / self_sent only):
@@ -68,6 +69,7 @@ Allowed fields — no others will be saved:
   sender_domain  →  type, domain, subjectOrSnippetContainsAny, subjectOrSnippetContainsAll
   sender         →  type, sender, subjectOrSnippetContainsAny, subjectOrSnippetContainsAll
   self_sent      →  type, subjectOrSnippetContainsAny, subjectOrSnippetContainsAll
+  sender_name_contains  →  type, pattern
   address        →  type, toAddress
 
 When modifying an existing rule, always include "existingRuleId" so the system updates it instead of creating a duplicate.
@@ -153,6 +155,7 @@ const triggerSchema = z.discriminatedUnion('type', [
   triggerBaseSchema.extend({ type: z.literal(TRIGGER_TYPES.SENDER_DOMAIN), domain: z.string() }),
   triggerBaseSchema.extend({ type: z.literal(TRIGGER_TYPES.SENDER), sender: z.string() }),
   triggerBaseSchema.extend({ type: z.literal(TRIGGER_TYPES.SELF_SENT) }),
+  z.object({ type: z.literal(TRIGGER_TYPES.SENDER_NAME_CONTAINS), pattern: z.string().min(1) }),
   z.object({ type: z.literal(TRIGGER_TYPES.SUBJECT_OR_SNIPPET_CONTAINS_ANY), patterns: z.array(z.string()).min(1) }),
   z.object({ type: z.literal(TRIGGER_TYPES.SUBJECT_OR_SNIPPET_CONTAINS_ALL), patterns: z.array(z.string()).min(1) }),
   z.object({ type: z.literal(TRIGGER_TYPES.ADDRESS), toAddress: z.string() }),
@@ -253,6 +256,7 @@ agentRouter.post('/rules', async (req, res) => {
         sender,
         senderAddress,
         senderDomain,
+        senderName: extractSenderName(sender),
         toAddresses,
         snippet,
         labelIds,

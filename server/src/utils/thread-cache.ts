@@ -13,6 +13,11 @@ export function extractDomain(address: string): string {
   return address.split('@')[1] ?? '';
 }
 
+export function extractSenderName(sender: string): string {
+  const match = /^(.+?)\s*<[^>]+>/.exec(sender.trim());
+  return match?.[1]?.trim() ?? '';
+}
+
 export function extractBody(payload: gmail_v1.Schema$MessagePart): { html: string | null; plain: string | null } {
   const mime = payload.mimeType ?? '';
 

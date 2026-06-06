@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractAddress, extractDomain, extractBody } from '../../utils/thread-cache';
+import { extractAddress, extractDomain, extractSenderName, extractBody } from '../../utils/thread-cache';
 
 describe('extractAddress', () => {
   it('parses "Name <email>" format', () => {
@@ -21,6 +21,24 @@ describe('extractAddress', () => {
 
   it('handles empty string', () => {
     expect(extractAddress('')).toBe('');
+  });
+});
+
+describe('extractSenderName', () => {
+  it('extracts the display name from "Name <email>" format', () => {
+    expect(extractSenderName('Alice Smith <alice@example.com>')).toBe('Alice Smith');
+  });
+
+  it('returns empty string when there is no display name', () => {
+    expect(extractSenderName('alice@example.com')).toBe('');
+  });
+
+  it('trims surrounding whitespace from the display name', () => {
+    expect(extractSenderName('  Alice  <alice@example.com>')).toBe('Alice');
+  });
+
+  it('handles empty string', () => {
+    expect(extractSenderName('')).toBe('');
   });
 });
 

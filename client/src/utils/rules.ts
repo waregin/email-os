@@ -61,6 +61,10 @@ export function describeTrigger(trigger: unknown): string {
       }
       case 'self_sent':
         return `Self-sent emails${secondaryFilters()}`;
+      case 'sender_name_contains': {
+        const pattern = t.pattern as string | undefined;
+        return pattern ? `Sender name contains "${pattern}"` : raw;
+      }
       case 'subject_or_snippet_contains_any': {
         const patterns = t.patterns as string[] | undefined;
         return patterns?.length

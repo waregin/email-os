@@ -24,6 +24,7 @@ const BASE_THREAD = {
   sender: 'Alice <alice@chase.com>',
   senderAddress: 'alice@chase.com',
   senderDomain: 'chase.com',
+  senderName: 'Alice',
   toAddresses: ['me@example.com'],
   snippet: 'Your statement is ready',
   labelIds: ['INBOX', 'UNREAD'],
@@ -219,5 +220,39 @@ describe('address trigger', () => {
     const thread = { ...BASE_THREAD, toAddresses: [] };
     const r = rule('r1', 'T4', { type: 'address', toAddress: 'me@example.com' });
     expect(matchThread(thread, [r])).toBeNull();
+  });
+});
+
+describe('sender_name_contains trigger', () => {
+  it('matches when display name contains the pattern', () => {
+    const r = rule('r1', 'T3', { type: 'sender_name_contains', pattern: 'Alice' });
+    expect(matchThread(BASE_THREAD, [r])).not.toBeNull();
+  });
+
+  it('is case-insensitive', () => {
+    const r = rule('r1', 'T3', { type: 'sender_name_contains', pattern: 'alice' });
+    expect(matchThread(BASE_THREAD, [r])).not.toBeNull();
+  });
+
+  it('matches a substring of the display name', () => {
+    const thread = { ...BASE_THREAD, sender: 'Alice Smith <alice@example.com>', senderName: 'Alice Smith' };
+    const r = rule('r1', 'T3', { type: 'sender_name_contains', pattern: 'Smith' });
+    expect(matchThread(thread, [r])).not.toBeNull();
+  });
+
+  it('does not match the email address — only the display name', () => {
+    const r = rule('r1', 'T3', { type: 'sender_name_contains', pattern: 'chase.com' });
+    expect(matchThread(BASE_THREAD, [r])).toBeNull();
+  });
+
+  it('does not match when there is no display name', () => {
+    const thread = { ...BASE_THREAD, sender: 'alice@example.com', senderName: '' };
+    const r = rule('r1', 'T3', { type: 'sender_name_contains', pattern: 'alice' });
+    expect(matchThread(thread, [r])).toBeNull();
+  });
+
+  it('does not match when pattern is not in the display name', () => {
+    const r = rule('r1', 'T3', { type: 'sender_name_contains', pattern: 'Bob' });
+    expect(matchThread(BASE_THREAD, [r])).toBeNull();
   });
 });

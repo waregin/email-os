@@ -4,7 +4,7 @@ import { matchThread } from './matcher';
 import type { ThreadData } from './matcher';
 import { buildDigestSummary } from './summarizer';
 import { buildGmailClient } from './utils/auth';
-import { extractAddress, extractDomain, resolveThreadMetadata } from './utils/thread-cache';
+import { extractAddress, extractDomain, extractSenderName, resolveThreadMetadata } from './utils/thread-cache';
 
 export async function runTriagePass(userId: string): Promise<{ fetched: number; processed: number; matched: number; unmatched: number }> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -59,6 +59,7 @@ export async function runTriagePass(userId: string): Promise<{ fetched: number; 
       sender,
       senderAddress,
       senderDomain,
+      senderName: extractSenderName(sender),
       toAddresses,
       snippet,
       labelIds,
