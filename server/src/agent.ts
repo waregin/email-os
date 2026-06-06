@@ -41,6 +41,7 @@ RULE_PROPOSAL:
   "trigger": <trigger object — see formats below>,
   "action": "digest",
   "priority": "<T1|T2|T3|T4>",
+  "categoryLabel": "<label for T4 Browse grouping — omit for T1/T2/T3>",
   "digestSummaryTemplate": "<template with {field} placeholders>",
   "notes": "<any exceptions or edge cases>"
 }
@@ -177,6 +178,7 @@ agentRouter.post('/rules', async (req, res) => {
         trigger: string;
         action: string;
         priority: string;
+        categoryLabel?: string;
         digestSummaryTemplate: string;
         notes?: string;
       };
@@ -187,6 +189,7 @@ agentRouter.post('/rules', async (req, res) => {
       trigger: normalizedTrigger,
       action: rule.action,
       priority: rule.priority,
+      categoryLabel: rule.categoryLabel ?? null,
       digestSummaryTemplate: rule.digestSummaryTemplate,
       notes: rule.notes ?? null,
     };

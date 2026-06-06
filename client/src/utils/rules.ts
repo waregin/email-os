@@ -3,6 +3,7 @@ export interface ProposedRule {
   trigger: unknown;
   action: string;
   priority: string;
+  categoryLabel?: string;
   digestSummaryTemplate: string;
   notes?: string;
 }
