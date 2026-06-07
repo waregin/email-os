@@ -89,6 +89,31 @@ describe('DigestPanel rendering', () => {
     // Apple should come before Other in DOM order
     expect(appleGroup.compareDocumentPosition(otherGroup) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it('drops an item from the open snapshot when it disappears from incoming items', () => {
+    const items = [
+      makeItem({ decisionId: 'd1', threadId: 't1', digestSummary: 'Keep me' }),
+      makeItem({ decisionId: 'd2', threadId: 't2', digestSummary: 'Remove me' }),
+    ];
+    const { rerender } = render(<DigestPanel tier="T3" items={items} isOpen={true} {...defaultProps()} />);
+    expect(screen.getByText('Remove me')).toBeInTheDocument();
+
+    // d2 is archived elsewhere and no longer arrives in items
+    rerender(<DigestPanel tier="T3" items={[items[0]!]} isOpen={true} {...defaultProps()} />);
+    expect(screen.queryByText('Remove me')).not.toBeInTheDocument();
+    expect(screen.getByText('Keep me')).toBeInTheDocument();
+  });
+
+  it('does not add newly-arrived items to an already-open snapshot (removals only)', () => {
+    const items = [makeItem({ decisionId: 'd1', threadId: 't1', digestSummary: 'Original' })];
+    const { rerender } = render(<DigestPanel tier="T3" items={items} isOpen={true} {...defaultProps()} />);
+    expect(screen.getByText('Original')).toBeInTheDocument();
+
+    const withNew = [...items, makeItem({ decisionId: 'd2', threadId: 't2', digestSummary: 'Newcomer' })];
+    rerender(<DigestPanel tier="T3" items={withNew} isOpen={true} {...defaultProps()} />);
+    expect(screen.queryByText('Newcomer')).not.toBeInTheDocument();
+    expect(screen.getByText('Original')).toBeInTheDocument();
+  });
 });
 
 describe('DigestPanel button sets per tier', () => {

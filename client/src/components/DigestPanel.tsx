@@ -327,6 +327,18 @@ export function DigestPanel({
     }
   }, [isOpen, items]);
 
+  // Reconcile the open snapshot with incoming items: drop any snapshot entry
+  // whose decision no longer exists (archived elsewhere, or after a re-teach).
+  // Removals only — never adds or reorders, so stable ordering is preserved.
+  useEffect(() => {
+    if (!isOpen) return;
+    const liveIds = new Set(items.map((i) => i.decisionId));
+    setSnapshotItems((prev) => {
+      const pruned = prev.filter((i) => liveIds.has(i.decisionId));
+      return pruned.length === prev.length ? prev : pruned;
+    });
+  }, [isOpen, items]);
+
   function handleToggle() {
     if (!isOpen) {
       snapshotTaken.current = true;
