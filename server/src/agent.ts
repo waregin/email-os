@@ -202,19 +202,44 @@ agentRouter.post('/rules', async (req, res) => {
 
     let savedRule;
     if (rule.existingRuleId) {
-      const existing = await prisma.triageRule.findUnique({ where: { id: rule.existingRuleId } });
-      if (!existing || existing.userId !== userId || !existing.isActive) {
+      const referenced = await prisma.triageRule.findUnique({ where: { id: rule.existingRuleId } });
+
+      // Cross-user access is always a hard 404 (security check).
+      if (referenced && referenced.userId !== userId) {
         res.status(404).json({ error: 'Rule not found' });
         return;
       }
-      // Audit trail: deactivate the old version and create a new one pointing back to it
-      // rather than mutating in place, so the rule's history is preserved.
-      // A human went through /teach to confirm this edit, so the new version is always
-      // 'taught' — even when the predecessor was an ai_guess (which also bumps its priority rank).
-      await prisma.triageRule.update({ where: { id: existing.id }, data: { isActive: false } });
-      savedRule = await prisma.triageRule.create({
-        data: { userId, source: 'taught', parentId: existing.id, ...ruleData },
-      });
+
+      // If the agent proposed a stale existingRuleId — e.g. after a no-matches retry
+      // where the rule was already replaced earlier in the same conversation — walk the
+      // succession chain to find the current active version and update that instead.
+      let existing = referenced?.isActive ? referenced : null;
+      if (referenced && !existing) {
+        let cursor = referenced.id;
+        for (let hops = 0; hops < 5; hops++) {
+          const child = await prisma.triageRule.findFirst({
+            where: { parentId: cursor, userId },
+            orderBy: { createdAt: 'desc' },
+          });
+          if (!child) break;
+          if (child.isActive) { existing = child; break; }
+          cursor = child.id;
+        }
+      }
+
+      if (existing) {
+        // Audit trail: deactivate the old version and create a new one pointing back to it
+        // rather than mutating in place, so the rule's history is preserved.
+        // A human went through /teach to confirm this edit, so the new version is always
+        // 'taught' — even when the predecessor was an ai_guess (which also bumps its priority rank).
+        await prisma.triageRule.update({ where: { id: existing.id }, data: { isActive: false } });
+        savedRule = await prisma.triageRule.create({
+          data: { userId, source: 'taught', parentId: existing.id, ...ruleData },
+        });
+      } else {
+        // No active rule found for the given ID (hallucinated or fully orphaned chain) — create new.
+        savedRule = await prisma.triageRule.create({ data: { userId, source: 'taught', ...ruleData } });
+      }
     } else {
       savedRule = await prisma.triageRule.create({ data: { userId, source: 'taught', ...ruleData } });
     }

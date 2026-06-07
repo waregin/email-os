@@ -400,8 +400,9 @@ describe('POST /api/agent/rules', () => {
     expect(rule!.source).toBe('taught');
   });
 
-  it('returns 404 when existingRuleId is inactive', async () => {
-    const existing = await prisma.triageRule.create({
+  it('creates a new rule when existingRuleId is inactive with no active successor', async () => {
+    // Inactive rule with no children — no active successor to walk to.
+    const stale = await prisma.triageRule.create({
       data: {
         userId,
         trigger: JSON.stringify({ type: 'sender_domain', domain: 'old.com' }),
@@ -414,14 +415,69 @@ describe('POST /api/agent/rules', () => {
     });
     const res = await agent.post('/api/agent/rules').send({
       rule: {
-        existingRuleId: existing.id,
+        existingRuleId: stale.id,
         trigger: { type: 'sender_domain', domain: 'new.com' },
         action: 'digest',
         priority: 'T3',
         digestSummaryTemplate: 'new',
       },
     });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(200);
+    expect(res.body.ruleId).toBeTruthy();
+    const newRule = await prisma.triageRule.findUnique({ where: { id: res.body.ruleId } });
+    expect(newRule!.isActive).toBe(true);
+    expect(newRule!.parentId).toBeNull(); // orphaned stale — no lineage link
+  });
+
+  it('walks the succession chain when existingRuleId is stale (no-matches retry scenario)', async () => {
+    // Simulate: agent proposes existingRuleId pointing to a rule that was already replaced
+    // earlier in the same conversation (the no-matches retry bug).
+    const staleParent = await prisma.triageRule.create({
+      data: {
+        userId,
+        trigger: JSON.stringify({ type: 'sender_domain', domain: 'stale.com' }),
+        action: 'digest',
+        priority: 'T3',
+        digestSummaryTemplate: 'stale',
+        source: 'taught',
+        isActive: false,
+      },
+    });
+    const activeSuccessor = await prisma.triageRule.create({
+      data: {
+        userId,
+        trigger: JSON.stringify({ type: 'sender_domain', domain: 'current.com' }),
+        action: 'digest',
+        priority: 'T3',
+        digestSummaryTemplate: 'current',
+        source: 'taught',
+        isActive: true,
+        parentId: staleParent.id,
+      },
+    });
+
+    const res = await agent.post('/api/agent/rules').send({
+      rule: {
+        existingRuleId: staleParent.id, // agent proposes the now-inactive parent
+        trigger: { type: 'sender_domain', domain: 'improved.com' },
+        action: 'digest',
+        priority: 'T2',
+        digestSummaryTemplate: 'improved',
+      },
+    });
+
+    expect(res.status).toBe(200);
+
+    // The active successor is now deactivated (replaced)
+    const reloaded = await prisma.triageRule.findUnique({ where: { id: activeSuccessor.id } });
+    expect(reloaded!.isActive).toBe(false);
+
+    // A new rule is created pointing at the successor (not the stale grandparent)
+    const newRule = await prisma.triageRule.findUnique({ where: { id: res.body.ruleId } });
+    expect(newRule!.isActive).toBe(true);
+    expect(newRule!.parentId).toBe(activeSuccessor.id);
+    expect(JSON.parse(newRule!.trigger).domain).toBe('improved.com');
+    expect(newRule!.priority).toBe('T2');
   });
 
   it('returns 404 when existingRuleId belongs to another user', async () => {
