@@ -536,6 +536,38 @@ describe('runTriagePass', () => {
     expect(active!.priority).toBe('T2');
   });
 
+  it('archives the prior T5 and creates a fresh one when AI still cannot classify on re-evaluation', async () => {
+    const user = await createTestUser();
+    // A thread left at T5 by an earlier pass. T5 decisions are excluded from the
+    // skip-set, so it is re-evaluated; if AI still returns null the prior T5 must
+    // be archived rather than left to accumulate a duplicate row every pass.
+    const oldT5 = await prisma.triageDecision.create({
+      data: { threadId: 'stuck-th', userId: user.id, priority: 'T5', digestSummary: 'Unclassified', ruleId: null },
+    });
+
+    mockThreadsList.mockResolvedValueOnce({
+      data: { threads: [{ id: 'stuck-th', snippet: 'x' }], nextPageToken: null },
+    });
+    mockThreadsGet.mockResolvedValueOnce(makeGmailThread('stuck-th', 'Still a mystery', 'mystery@example.com'));
+    mockCreate.mockResolvedValueOnce({
+      content: [{ type: 'text', text: JSON.stringify([null]) }],
+    });
+
+    const result = await runTriagePass(user.id);
+    expect(result.t5Fallback).toBe(1);
+
+    const archived = await prisma.triageDecision.findUnique({ where: { id: oldT5.id } });
+    expect(archived!.archivedAt).not.toBeNull();
+
+    // Exactly one active T5 remains, and it is a new row — not the archived one.
+    const active = await prisma.triageDecision.findMany({
+      where: { threadId: 'stuck-th', userId: user.id, archivedAt: null },
+    });
+    expect(active).toHaveLength(1);
+    expect(active[0]!.priority).toBe('T5');
+    expect(active[0]!.id).not.toBe(oldT5.id);
+  });
+
   it('second chunk reuses ai_guess rule created in first chunk without a second AI call', async () => {
     const user = await createTestUser();
     // Two threads from the same domain — no rules exist
@@ -610,6 +642,41 @@ describe('runTriagePass', () => {
     expect(decision!.priority).toBe('T3');
     // aiClassified counts both the AI-classified reuse-0 and the re-check-matched reuse-15
     expect(result.aiClassified).toBeGreaterThanOrEqual(2);
+  });
+
+  it('archives a prior T5 when a later chunk matches it against an earlier chunk ai_guess rule', async () => {
+    const user = await createTestUser();
+    // Same 2-chunk (15 + 1) reuse scenario, but reuse-15 already carries a T5 from a
+    // previous pass. Chunk 1 creates an ai_guess rule for reuse.com; chunk 2's pre-AI
+    // re-check matches reuse-15 against it and must archive that prior T5 first —
+    // otherwise the thread keeps a stale duplicate alongside the new decision.
+    const oldT5 = await prisma.triageDecision.create({
+      data: { threadId: 'reuse-15', userId: user.id, priority: 'T5', digestSummary: 'Unclassified', ruleId: null },
+    });
+    const threads = Array.from({ length: 16 }, (_, i) => ({ id: `reuse-${i}`, snippet: 'x' }));
+    mockThreadsList.mockResolvedValueOnce({ data: { threads, nextPageToken: null } });
+    mockThreadsGet.mockImplementation(({ id }: { id: string }) =>
+      Promise.resolve(makeGmailThread(id, 'Subject', 'sender@reuse.com')),
+    );
+
+    const chunk1Results = Array.from({ length: 15 }, (_, i) =>
+      i === 0
+        ? { threadId: 'reuse-0', tier: 'T3', digestSummary: 's', digestSummaryTemplate: '{subject}', trigger: { type: 'sender_domain', domain: 'reuse.com' } }
+        : null,
+    );
+    mockCreate.mockResolvedValueOnce({ content: [{ type: 'text', text: JSON.stringify(chunk1Results) }] });
+
+    await runTriagePass(user.id);
+
+    const archived = await prisma.triageDecision.findUnique({ where: { id: oldT5.id } });
+    expect(archived!.archivedAt).not.toBeNull();
+
+    const active = await prisma.triageDecision.findMany({
+      where: { threadId: 'reuse-15', userId: user.id, archivedAt: null },
+    });
+    expect(active).toHaveLength(1);
+    expect(active[0]!.priority).toBe('T3');
+    expect(active[0]!.id).not.toBe(oldT5.id);
   });
 
   it('AI proposes modifying an existing ai_guess rule via existingRuleId', async () => {

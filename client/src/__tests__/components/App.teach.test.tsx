@@ -222,4 +222,45 @@ describe('TeachPanel rule proposal flow', () => {
     await waitFor(() => expect(screen.getByText('Rule saved.')).toBeInTheDocument());
     expect(mockApi.applyRule).not.toHaveBeenCalled();
   });
+
+  it('receiving a revised proposal resets rule phase so the new proposal can be confirmed', async () => {
+    const user = userEvent.setup();
+    const REVISED_RESPONSE = `I've updated the rule.
+RULE_PROPOSAL:
+{"trigger":{"type":"sender_domain","domain":"acme.com"},"action":"digest","priority":"T2","digestSummaryTemplate":"Updated: {subject}"}
+Better?`;
+    mockApi.teachMessage
+      .mockResolvedValueOnce({ response: PROPOSAL_RESPONSE })
+      .mockResolvedValueOnce({ response: REVISED_RESPONSE });
+    render(<App />);
+    await openTeachPanel(user);
+    await waitFor(() => expect(screen.getByText('Revise')).toBeInTheDocument());
+
+    await user.click(screen.getByText('Revise'));
+
+    // The new proposal replaces the old one — rule-phase was reset so Confirm rule is actionable
+    await waitFor(() => expect(screen.getByText('Updated: {subject}')).toBeInTheDocument());
+    expect(screen.getAllByText('Confirm rule')).not.toHaveLength(0);
+  });
+
+  it('shows an error and restores the thread list when applying the rule fails', async () => {
+    const user = userEvent.setup();
+    mockApi.teachMessage.mockResolvedValueOnce({ response: PROPOSAL_RESPONSE });
+    mockApi.saveRule.mockResolvedValueOnce({
+      ruleId: 'r1',
+      matchingThreads: [{ threadId: 't1', subject: 'Invoice #1234', sender: 'Acme', date: '', snippet: '' }],
+    });
+    mockApi.applyRule.mockRejectedValueOnce(new Error('Apply failed'));
+    render(<App />);
+    await openTeachPanel(user);
+    await waitFor(() => expect(screen.getByText('Confirm rule')).toBeInTheDocument());
+    await user.click(screen.getByText('Confirm rule'));
+    await waitFor(() => expect(screen.getByText('Apply to 1 thread')).toBeInTheDocument());
+
+    await user.click(screen.getByText('Apply to 1 thread'));
+
+    await waitFor(() => expect(screen.getByText('Apply failed')).toBeInTheDocument());
+    // rulePhase restored to 'threads' — the thread list and Apply button are still present
+    expect(screen.getByText('Apply to 1 thread')).toBeInTheDocument();
+  });
 });
