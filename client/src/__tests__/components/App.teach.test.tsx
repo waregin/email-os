@@ -44,6 +44,44 @@ const T5_DECISION: DecisionWithThread = {
   },
 };
 
+const T3_DECISION: DecisionWithThread = {
+  decisionId: 'd2',
+  threadId: 't2',
+  priority: 'T3',
+  categoryLabel: null,
+  digestSummary: 'Newsletter: weekly digest',
+  decidedAt: '2024-01-01T00:00:00Z',
+  confirmedByUser: false,
+  userFlagged: false,
+  thread: {
+    subject: 'Weekly Digest',
+    sender: 'news@example.com',
+    date: '2024-01-01T00:00:00Z',
+    snippet: 'This week in news',
+    unreadCount: 1,
+    messageCount: 1,
+  },
+};
+
+const T4_DECISION: DecisionWithThread = {
+  decisionId: 'd3',
+  threadId: 't3',
+  priority: 'T4',
+  categoryLabel: 'Newsletters',
+  digestSummary: 'Weekly Digest',
+  decidedAt: '2024-01-01T00:00:00Z',
+  confirmedByUser: false,
+  userFlagged: false,
+  thread: {
+    subject: 'Weekly Digest',
+    sender: 'news@example.com',
+    date: '2024-01-01T00:00:00Z',
+    snippet: 'This week in news',
+    unreadCount: 1,
+    messageCount: 1,
+  },
+};
+
 // An assistant reply that embeds a rule proposal
 const PROPOSAL_RESPONSE = `Here is a rule I propose.
 RULE_PROPOSAL:
@@ -305,5 +343,105 @@ Better?`;
     await waitFor(() => expect(screen.getByText('Apply failed')).toBeInTheDocument());
     // rulePhase restored to 'threads' — the thread list and Apply button are still present
     expect(screen.getByText('Apply to 1 thread')).toBeInTheDocument();
+  });
+});
+
+// Open TeachPanel via a T3 item's Wrong → Fix summary path.
+async function openTeachPanelViaFixSummary(user: ReturnType<typeof userEvent.setup>) {
+  await waitFor(() => expect(screen.getByText('T3 Summarized')).toBeInTheDocument());
+  await user.click(screen.getByText('T3 Summarized'));
+  await waitFor(() => expect(screen.getByText('Newsletter: weekly digest')).toBeInTheDocument());
+  await user.click(screen.getByText('Wrong'));
+  await user.click(screen.getByLabelText('Fix digest summary'));
+}
+
+// Open TeachPanel via a T4 item's Wrong → Fix category → input → Confirm path.
+async function openTeachPanelViaFixCategory(user: ReturnType<typeof userEvent.setup>, newCategory: string) {
+  await waitFor(() => expect(screen.getByText('T4 Browse')).toBeInTheDocument());
+  await user.click(screen.getByText('T4 Browse'));
+  await waitFor(() => expect(screen.getByText(/Newsletters/)).toBeInTheDocument());
+  await user.click(screen.getByText(/Newsletters/));
+  await user.click(screen.getByText('Wrong'));
+  await user.click(screen.getByLabelText('Fix category label'));
+  const input = screen.getByLabelText('Correct category');
+  await user.clear(input);
+  await user.type(input, newCategory);
+  await user.keyboard('{Enter}');
+}
+
+describe('TeachPanel Fix summary flow', () => {
+  beforeEach(() => {
+    mockApi.getDecisions.mockResolvedValue({ ...EMPTY, T3: [T3_DECISION] });
+  });
+
+  it('sends the fix-summary userContext to the agent on open', async () => {
+    const user = userEvent.setup();
+    mockApi.teachMessage.mockResolvedValueOnce({ response: 'I will fix the summary.' });
+    render(<App />);
+    await openTeachPanelViaFixSummary(user);
+
+    await waitFor(() => expect(screen.getByText('I will fix the summary.')).toBeInTheDocument());
+    expect(mockApi.teachMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [],
+        threadContext: expect.objectContaining({ subject: 'Weekly Digest', threadId: 't2' }),
+        userContext: expect.stringContaining('digest summary'),
+      }),
+    );
+    // Should mention the correct tier and not say "belongs in"
+    const call = mockApi.teachMessage.mock.calls[0]![0];
+    expect(call.userContext).toContain('T3');
+    expect(call.userContext).not.toContain('belongs in T3');
+  });
+
+  it('confirming the proposed rule saves it via saveRule', async () => {
+    const user = userEvent.setup();
+    mockApi.teachMessage.mockResolvedValueOnce({ response: PROPOSAL_RESPONSE });
+    mockApi.saveRule.mockResolvedValueOnce({ ruleId: 'r1', matchingThreads: [] });
+    render(<App />);
+    await openTeachPanelViaFixSummary(user);
+    await waitFor(() => expect(screen.getByText('Confirm rule')).toBeInTheDocument());
+
+    await user.click(screen.getByText('Confirm rule'));
+
+    await waitFor(() => expect(mockApi.saveRule).toHaveBeenCalled());
+  });
+});
+
+describe('TeachPanel Fix category flow', () => {
+  beforeEach(() => {
+    mockApi.getDecisions.mockResolvedValue({ ...EMPTY, T4: [T4_DECISION] });
+  });
+
+  it('sends the fix-category userContext to the agent on open', async () => {
+    const user = userEvent.setup();
+    mockApi.teachMessage.mockResolvedValueOnce({ response: 'I will fix the category.' });
+    render(<App />);
+    await openTeachPanelViaFixCategory(user, 'Finance');
+
+    await waitFor(() => expect(screen.getByText('I will fix the category.')).toBeInTheDocument());
+    expect(mockApi.teachMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [],
+        threadContext: expect.objectContaining({ subject: 'Weekly Digest', threadId: 't3' }),
+        userContext: expect.stringContaining('Finance'),
+      }),
+    );
+    const call = mockApi.teachMessage.mock.calls[0]![0];
+    expect(call.userContext).toContain('category');
+    expect(call.userContext).toContain('T4');
+  });
+
+  it('confirming the proposed rule saves it via saveRule', async () => {
+    const user = userEvent.setup();
+    mockApi.teachMessage.mockResolvedValueOnce({ response: PROPOSAL_RESPONSE });
+    mockApi.saveRule.mockResolvedValueOnce({ ruleId: 'r1', matchingThreads: [] });
+    render(<App />);
+    await openTeachPanelViaFixCategory(user, 'Finance');
+    await waitFor(() => expect(screen.getByText('Confirm rule')).toBeInTheDocument());
+
+    await user.click(screen.getByText('Confirm rule'));
+
+    await waitFor(() => expect(mockApi.saveRule).toHaveBeenCalled());
   });
 });

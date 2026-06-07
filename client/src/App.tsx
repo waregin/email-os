@@ -100,7 +100,7 @@ const DIGEST_PANELS = [
 
 function MainApp() {
   const [error, setError] = useState<string | null>(null);
-  const [teachContext, setTeachContext] = useState<{ thread: Thread; correctTier?: string; decisionId?: string } | null>(null);
+  const [teachContext, setTeachContext] = useState<{ thread: Thread; correctTier?: string; decisionId?: string; fixSummary?: boolean; correctCategory?: string } | null>(null);
   const [decisions, setDecisions] = useState<DecisionsState>({ T1: [], T2: [], T3: [], T4: [], T5: [] });
   const [openTier, setOpenTier] = useState<'T1' | 'T2' | 'T3' | 'T4' | 'T5' | null>('T1');
   const [refreshing, setRefreshing] = useState(false);
@@ -209,7 +209,7 @@ function MainApp() {
   }
 
   const handleOpenTeach = useCallback(
-    (item: DecisionWithThread, opts: { correctTier: string }) => {
+    (item: DecisionWithThread, opts: { correctTier: string; fixSummary?: boolean; correctCategory?: string }) => {
       const thread: Thread = {
         id: item.threadId,
         subject: item.thread.subject,
@@ -219,7 +219,7 @@ function MainApp() {
         isUnread: item.thread.unreadCount > 0,
         unreadCount: item.thread.unreadCount,
       };
-      setTeachContext({ thread, correctTier: opts.correctTier, decisionId: item.decisionId });
+      setTeachContext({ thread, correctTier: opts.correctTier, decisionId: item.decisionId, fixSummary: opts.fixSummary, correctCategory: opts.correctCategory });
     },
     [],
   );
@@ -327,6 +327,8 @@ function MainApp() {
         thread={teachContext?.thread ?? null}
         correctTier={teachContext?.correctTier}
         decisionId={teachContext?.decisionId}
+        fixSummary={teachContext?.fixSummary}
+        correctCategory={teachContext?.correctCategory}
         onClose={handleTeachClose}
         onDecisionsRefresh={loadDecisions}
       />
@@ -352,18 +354,24 @@ function TeachPanel({
   thread,
   correctTier,
   decisionId,
+  fixSummary,
+  correctCategory,
   onClose,
   onDecisionsRefresh,
 }: {
   thread: Thread | null;
   correctTier?: string;
   decisionId?: string;
+  fixSummary?: boolean;
+  correctCategory?: string;
   onClose: () => void;
   onDecisionsRefresh: () => void;
 }) {
-  // When the panel was opened from a Wrong/Teach action the user has already
-  // chosen the tier; tell the agent to skip questions and lead with a hypothesis.
-  const userContext = correctTier
+  const userContext = fixSummary
+    ? `The tier (${correctTier}) is correct but the digest summary for this thread is wrong. Identify the rule that classified this thread and propose an updated digestSummaryTemplate. Skip clarifying questions and immediately propose a fix.`
+    : correctCategory
+    ? `The tier (${correctTier}) is correct but the category label is wrong — the correct category is "${correctCategory}". Identify the rule that classified this thread and propose updating only the categoryLabel to "${correctCategory}". Skip clarifying questions and immediately propose this change.`
+    : correctTier
     ? `The user has indicated this thread belongs in ${correctTier}. Skip clarifying questions and immediately propose a rule with a brief explanation.`
     : undefined;
   const [messages, setMessages] = useState<ChatMessage[]>([]);

@@ -14,7 +14,7 @@ interface DigestPanelProps {
   onConfirm: (decisionId: string) => void;
   onDone: (decisionId: string) => void;
   onFollowup: (decisionId: string, note?: string) => void;
-  onOpenTeach: (item: DecisionWithThread, opts: { correctTier: string }) => void;
+  onOpenTeach: (item: DecisionWithThread, opts: { correctTier: string; fixSummary?: boolean; correctCategory?: string }) => void;
   onConfirmAll: (decisionIds: string[], tier: string) => void;
 }
 
@@ -41,13 +41,15 @@ function DigestItemRow({
   onDone: (decisionId: string) => void;
   onConfirm: (decisionId: string) => void;
   onFollowup: (decisionId: string, note?: string) => void;
-  onOpenTeach: (item: DecisionWithThread, opts: { correctTier: string }) => void;
+  onOpenTeach: (item: DecisionWithThread, opts: { correctTier: string; fixSummary?: boolean; correctCategory?: string }) => void;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const prevExpanded = useRef(expanded);
   const [followupMode, setFollowupMode] = useState(false);
   const [note, setNote] = useState('');
   const [tierPickerOpen, setTierPickerOpen] = useState(false);
+  const [categoryInputMode, setCategoryInputMode] = useState(false);
+  const [categoryDraft, setCategoryDraft] = useState(item.categoryLabel ?? '');
 
   useEffect(() => {
     if (prevExpanded.current === expanded) return;
@@ -70,6 +72,18 @@ function DigestItemRow({
   function pickTier(correctTier: string) {
     onOpenTeach(item, { correctTier });
     setTierPickerOpen(false);
+  }
+
+  function pickSummaryFix() {
+    onOpenTeach(item, { correctTier: item.priority, fixSummary: true });
+    setTierPickerOpen(false);
+  }
+
+  function pickCategoryFix() {
+    if (!categoryDraft.trim()) return;
+    onOpenTeach(item, { correctTier: item.priority, correctCategory: categoryDraft.trim() });
+    setTierPickerOpen(false);
+    setCategoryInputMode(false);
   }
 
   return (
@@ -184,33 +198,79 @@ function DigestItemRow({
           className="flex items-center gap-2 px-4 py-2 border-b border-gray-800/60 bg-gray-900/30"
           onClick={(e) => e.stopPropagation()}
         >
-          <span className="text-xs text-gray-500 shrink-0">Correct tier:</span>
-          {TIERS.map((t) => {
-            const isCurrent = t === item.priority;
-            return (
+          {categoryInputMode ? (
+            <>
+              <span className="text-xs text-gray-500 shrink-0">Correct category:</span>
+              <input
+                autoFocus
+                type="text"
+                value={categoryDraft}
+                onChange={(e) => setCategoryDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && categoryDraft.trim()) pickCategoryFix();
+                  if (e.key === 'Escape') setCategoryInputMode(false);
+                }}
+                aria-label="Correct category"
+                className="flex-1 min-w-0 text-xs bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500"
+              />
               <button
-                key={t}
-                onClick={() => pickTier(t)}
-                disabled={isCurrent}
-                aria-label={isCurrent ? `${t} (current — incorrect)` : `Move to ${t}`}
-                title={isCurrent ? 'Current tier (marked incorrect)' : undefined}
-                className={`text-xs px-2 py-0.5 rounded border transition-colors ${
-                  isCurrent
-                    ? 'border-red-700/50 text-red-400/60 line-through cursor-not-allowed'
-                    : 'border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500'
-                }`}
+                onClick={pickCategoryFix}
+                disabled={!categoryDraft.trim()}
+                className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-blue-400 hover:border-blue-700 transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {t}
+                Confirm
               </button>
-            );
-          })}
-          <button
-            onClick={() => setTierPickerOpen(false)}
-            aria-label="Cancel tier picker"
-            className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors shrink-0 ml-auto"
-          >
-            ✕
-          </button>
+              <button
+                onClick={() => setCategoryInputMode(false)}
+                aria-label="Cancel category input"
+                className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors shrink-0"
+              >
+                ✕
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="text-xs text-gray-500 shrink-0">Correct tier:</span>
+              {TIERS.map((t) => {
+                const isCurrent = t === item.priority;
+                return (
+                  <button
+                    key={t}
+                    onClick={() => pickTier(t)}
+                    disabled={isCurrent}
+                    aria-label={isCurrent ? `${t} (current — incorrect)` : `Move to ${t}`}
+                    title={isCurrent ? 'Current tier (marked incorrect)' : undefined}
+                    className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                      isCurrent
+                        ? 'border-red-700/50 text-red-400/60 line-through cursor-not-allowed'
+                        : 'border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                );
+              })}
+              {!isT5 && (
+                <>
+                  <span className="text-xs text-gray-700 shrink-0 mx-1" aria-hidden="true">|</span>
+                  <button
+                    onClick={isT4 ? () => setCategoryInputMode(true) : pickSummaryFix}
+                    aria-label={isT4 ? 'Fix category label' : 'Fix digest summary'}
+                    className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-blue-400 hover:border-blue-700 transition-colors shrink-0"
+                  >
+                    {isT4 ? 'Fix category' : 'Fix summary'}
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => setTierPickerOpen(false)}
+                aria-label="Cancel tier picker"
+                className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors shrink-0 ml-auto"
+              >
+                ✕
+              </button>
+            </>
+          )}
         </div>
       )}
       {followupMode && (
@@ -276,7 +336,7 @@ function DigestGroupPanel({
   onDone: (id: string) => void;
   onConfirm: (id: string) => void;
   onFollowup: (id: string, note?: string) => void;
-  onOpenTeach: (item: DecisionWithThread, opts: { correctTier: string }) => void;
+  onOpenTeach: (item: DecisionWithThread, opts: { correctTier: string; fixSummary?: boolean; correctCategory?: string }) => void;
   onConfirmAll: (items: DecisionWithThread[]) => void;
 }) {
   const groupRef = useRef<HTMLDivElement>(null);

@@ -269,6 +269,114 @@ describe('DigestPanel actions', () => {
     expect(screen.queryByLabelText('Move to T1')).not.toBeInTheDocument();
     expect(props.onOpenTeach).not.toHaveBeenCalled();
   });
+
+  it('T1-T3 picker shows Fix summary button alongside the tier buttons', async () => {
+    const user = userEvent.setup();
+    const props = defaultProps();
+    const items = [makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T3' })];
+    render(<DigestPanel tier="T3" items={items} isOpen={true} {...props} />);
+    await user.click(screen.getByText('Wrong'));
+    expect(screen.getByLabelText('Fix digest summary')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Fix category label')).not.toBeInTheDocument();
+  });
+
+  it('clicking Fix summary calls onOpenTeach with fixSummary: true and the current tier', async () => {
+    const user = userEvent.setup();
+    const props = defaultProps();
+    const items = [makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T3' })];
+    render(<DigestPanel tier="T3" items={items} isOpen={true} {...props} />);
+    await user.click(screen.getByText('Wrong'));
+    await user.click(screen.getByLabelText('Fix digest summary'));
+    expect(props.onOpenTeach).toHaveBeenCalledWith(
+      expect.objectContaining({ decisionId: 'd1', threadId: 't1' }),
+      { correctTier: 'T3', fixSummary: true },
+    );
+  });
+
+  it('Fix summary also works from T1/T2 items', async () => {
+    const user = userEvent.setup();
+    const props = defaultProps();
+    const items = [makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T1' })];
+    render(<DigestPanel tier="T1" items={items} isOpen={true} {...props} />);
+    await user.click(screen.getByText('Wrong'));
+    await user.click(screen.getByLabelText('Fix digest summary'));
+    expect(props.onOpenTeach).toHaveBeenCalledWith(
+      expect.objectContaining({ decisionId: 'd1' }),
+      { correctTier: 'T1', fixSummary: true },
+    );
+  });
+
+  it('T4 picker shows Fix category button (not Fix summary)', async () => {
+    const user = userEvent.setup();
+    const props = defaultProps();
+    const items = [makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T4', categoryLabel: 'Newsletters' })];
+    render(<DigestPanel tier="T4" items={items} isOpen={true} {...props} />);
+    // T4 items are grouped — open the group first
+    await user.click(screen.getByText(/Newsletters/));
+    await user.click(screen.getByText('Wrong'));
+    expect(screen.getByLabelText('Fix category label')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Fix digest summary')).not.toBeInTheDocument();
+  });
+
+  it('clicking Fix category reveals a category input pre-filled with the current label', async () => {
+    const user = userEvent.setup();
+    const props = defaultProps();
+    const items = [makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T4', categoryLabel: 'Newsletters' })];
+    render(<DigestPanel tier="T4" items={items} isOpen={true} {...props} />);
+    await user.click(screen.getByText(/Newsletters/));
+    await user.click(screen.getByText('Wrong'));
+    await user.click(screen.getByLabelText('Fix category label'));
+    const input = screen.getByLabelText('Correct category') as HTMLInputElement;
+    expect(input).toBeInTheDocument();
+    expect(input.value).toBe('Newsletters');
+    expect(props.onOpenTeach).not.toHaveBeenCalled();
+  });
+
+  it('confirming the category input calls onOpenTeach with correctCategory', async () => {
+    const user = userEvent.setup();
+    const props = defaultProps();
+    const items = [makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T4', categoryLabel: 'Newsletters' })];
+    render(<DigestPanel tier="T4" items={items} isOpen={true} {...props} />);
+    await user.click(screen.getByText(/Newsletters/));
+    await user.click(screen.getByText('Wrong'));
+    await user.click(screen.getByLabelText('Fix category label'));
+    const input = screen.getByLabelText('Correct category');
+    await user.clear(input);
+    await user.type(input, 'Finance');
+    const confirmBtn = input.closest('div')!.querySelector('button[disabled]') === null
+      ? screen.getAllByText('Confirm').find((el) => el.closest('div')?.contains(input))
+      : null;
+    // Use Enter key to confirm
+    await user.keyboard('{Enter}');
+    expect(props.onOpenTeach).toHaveBeenCalledWith(
+      expect.objectContaining({ decisionId: 'd1' }),
+      { correctTier: 'T4', correctCategory: 'Finance' },
+    );
+  });
+
+  it('cancelling the category input returns to the tier picker without calling onOpenTeach', async () => {
+    const user = userEvent.setup();
+    const props = defaultProps();
+    const items = [makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T4', categoryLabel: 'Newsletters' })];
+    render(<DigestPanel tier="T4" items={items} isOpen={true} {...props} />);
+    await user.click(screen.getByText(/Newsletters/));
+    await user.click(screen.getByText('Wrong'));
+    await user.click(screen.getByLabelText('Fix category label'));
+    expect(screen.getByLabelText('Correct category')).toBeInTheDocument();
+    await user.click(screen.getByLabelText('Cancel category input'));
+    expect(screen.queryByLabelText('Correct category')).not.toBeInTheDocument();
+    // Back to tier picker — tier buttons visible again
+    expect(screen.getByLabelText('Move to T1')).toBeInTheDocument();
+    expect(props.onOpenTeach).not.toHaveBeenCalled();
+  });
+
+  it('T5 picker does not show Fix summary or Fix category', async () => {
+    const user = userEvent.setup();
+    render(<DigestPanel tier="T5" label="T5 Unclassified" items={[makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T5', digestSummary: 'should-not-show', thread: { subject: 'Mystery', sender: 'a@b.com', date: '2024-01-01T00:00:00Z', snippet: 'snip', unreadCount: 0, messageCount: 1 } })]} isOpen={true} {...defaultProps()} />);
+    await user.click(screen.getByText('Teach'));
+    expect(screen.queryByLabelText('Fix digest summary')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Fix category label')).not.toBeInTheDocument();
+  });
 });
 
 describe('DigestPanel Confirm All', () => {
