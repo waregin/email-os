@@ -24,7 +24,7 @@ function makeDecision(overrides: Partial<DecisionWithThread> & { decisionId: str
 }
 
 function emptyState(): DecisionsState {
-  return { T1: [], T2: [], T3: [], T4: [] };
+  return { T1: [], T2: [], T3: [], T4: [], T5: [] };
 }
 
 describe('dedupeDecisions', () => {
@@ -74,6 +74,16 @@ describe('dedupeDecisions', () => {
     ];
     const result = dedupeDecisions(state);
     expect(result.T2.map((d) => d.decisionId)).toEqual(['d2', 'd1']);
+  });
+
+  it('sorts T5 by thread date ascending like T1/T2/T3', () => {
+    const state = emptyState();
+    state.T5 = [
+      makeDecision({ decisionId: 'd1', threadId: 'a', thread: { subject: '', sender: '', date: '2024-12-01T00:00:00Z', snippet: '', unreadCount: 0, messageCount: 1 } }),
+      makeDecision({ decisionId: 'd2', threadId: 'b', thread: { subject: '', sender: '', date: '2024-01-01T00:00:00Z', snippet: '', unreadCount: 0, messageCount: 1 } }),
+    ];
+    const result = dedupeDecisions(state);
+    expect(result.T5.map((d) => d.decisionId)).toEqual(['d2', 'd1']);
   });
 
   it('does not sort T4 (order left to buildGroups on the client)', () => {

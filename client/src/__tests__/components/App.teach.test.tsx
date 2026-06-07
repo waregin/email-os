@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../../App';
-import type { Thread } from '../../api';
+import type { DecisionWithThread } from '../../api';
 
 vi.mock('../../api', () => ({
   api: {
@@ -14,22 +14,34 @@ vi.mock('../../api', () => ({
     teachMessage: vi.fn(),
     saveRule: vi.fn(),
     applyRule: vi.fn(),
+    misclassifiedDecision: vi.fn(),
   },
 }));
 
 import { api } from '../../api';
 const mockApi = vi.mocked(api);
 
-const EMPTY = { T1: [], T2: [], T3: [], T4: [] };
+const EMPTY = { T1: [], T2: [], T3: [], T4: [], T5: [] };
 
-const THREAD: Thread = {
-  id: 't1',
-  snippet: 'Your invoice is ready',
-  subject: 'Invoice #1234',
-  sender: 'Acme Billing <billing@acme.com>',
-  date: '2024-01-01T00:00:00Z',
-  isUnread: true,
-  unreadCount: 1,
+// An unclassified (T5) decision — the teach flow is now reached by teaching a
+// T5 item: open the T5 panel, click Teach, pick the correct tier.
+const T5_DECISION: DecisionWithThread = {
+  decisionId: 'd1',
+  threadId: 't1',
+  priority: 'T5',
+  categoryLabel: null,
+  digestSummary: 'Unclassified',
+  decidedAt: '2024-01-01T00:00:00Z',
+  confirmedByUser: false,
+  userFlagged: false,
+  thread: {
+    subject: 'Invoice #1234',
+    sender: 'Acme Billing <billing@acme.com>',
+    date: '2024-01-01T00:00:00Z',
+    snippet: 'Your invoice is ready',
+    unreadCount: 1,
+    messageCount: 1,
+  },
 };
 
 // An assistant reply that embeds a rule proposal
@@ -42,16 +54,22 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockApi.getStatus.mockResolvedValue({ authenticated: true });
   mockApi.getUnreadCount.mockResolvedValue({ count: 0 });
-  mockApi.getThreads.mockResolvedValue({ threads: [THREAD] });
-  mockApi.getDecisions.mockResolvedValue(EMPTY);
+  mockApi.getThreads.mockResolvedValue({ threads: [] });
+  mockApi.getDecisions.mockResolvedValue({ ...EMPTY, T5: [T5_DECISION] });
   mockApi.getThread.mockResolvedValue({ id: 't1', messages: [] });
   mockApi.saveRule.mockResolvedValue({ ruleId: 'r1', matchingThreads: [] });
   mockApi.applyRule.mockResolvedValue({ ok: true, applied: 1 });
+  mockApi.misclassifiedDecision.mockResolvedValue({ ok: true, threadId: 't1' });
 });
 
+// Open the T5 panel, click the item's Teach button, and pick the correct tier —
+// which opens the TeachPanel with that tier as context.
 async function openTeachPanel(user: ReturnType<typeof userEvent.setup>) {
+  await waitFor(() => expect(screen.getByText('T5 Unclassified')).toBeInTheDocument());
+  await user.click(screen.getByText('T5 Unclassified'));
   await waitFor(() => expect(screen.getByText('Invoice #1234')).toBeInTheDocument());
   await user.click(screen.getByText('Teach'));
+  await user.click(screen.getByLabelText('Move to T3'));
 }
 
 describe('TeachPanel open + conversation', () => {

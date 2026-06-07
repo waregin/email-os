@@ -15,7 +15,7 @@ vi.mock('../../api', () => ({
 import { api } from '../../api';
 const mockApi = vi.mocked(api);
 
-const EMPTY_DECISIONS = { T1: [], T2: [], T3: [], T4: [] };
+const EMPTY_DECISIONS = { T1: [], T2: [], T3: [], T4: [], T5: [] };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -54,15 +54,38 @@ describe('App authentication state', () => {
     });
   });
 
-  it('renders the main app (digest + inbox) when authenticated', async () => {
+  it('renders the digest when authenticated, with no inbox section', async () => {
     mockApi.getStatus.mockResolvedValueOnce({ authenticated: true });
     render(<App />);
     await waitFor(() => {
       expect(screen.getByText('Digest')).toBeInTheDocument();
     });
     expect(screen.getByText('T1 Immediate Attention')).toBeInTheDocument();
-    // Inbox section label is present (count appended once threads load)
-    expect(screen.getByText(/^Inbox/)).toBeInTheDocument();
+    // The inbox section was removed in Phase 6 — unclassified threads live in T5 now
+    expect(screen.queryByText(/^Inbox/)).not.toBeInTheDocument();
+  });
+});
+
+describe('App T5 Unclassified panel', () => {
+  const t5Decision = {
+    decisionId: 'd5', threadId: 't5', priority: 'T5', categoryLabel: null,
+    digestSummary: 'Unclassified', decidedAt: '2024-01-01T00:00:00Z',
+    confirmedByUser: false, userFlagged: false,
+    thread: { subject: 'Mystery email', sender: 'a@b.com', date: '2024-01-01T00:00:00Z', snippet: 'snip', unreadCount: 0, messageCount: 1 },
+  };
+
+  it('does not render the T5 panel when there are no T5 decisions', async () => {
+    mockApi.getStatus.mockResolvedValueOnce({ authenticated: true });
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('Digest')).toBeInTheDocument());
+    expect(screen.queryByText('T5 Unclassified')).not.toBeInTheDocument();
+  });
+
+  it('renders the T5 panel when there are T5 decisions', async () => {
+    mockApi.getStatus.mockResolvedValueOnce({ authenticated: true });
+    mockApi.getDecisions.mockResolvedValue({ ...EMPTY_DECISIONS, T5: [t5Decision] });
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('T5 Unclassified')).toBeInTheDocument());
   });
 });
 
@@ -95,19 +118,17 @@ describe('App authenticated side effects', () => {
 });
 
 describe('App refresh button', () => {
-  it('re-fetches threads and decisions when clicked', async () => {
+  it('re-fetches decisions when clicked', async () => {
     mockApi.getStatus.mockResolvedValueOnce({ authenticated: true });
     render(<App />);
     await waitFor(() => expect(screen.getByText('Digest')).toBeInTheDocument());
 
-    // Ignore the initial mount fetches; only count what the click triggers
-    mockApi.getThreads.mockClear();
+    // Ignore the initial mount fetch; only count what the click triggers
     mockApi.getDecisions.mockClear();
 
     fireEvent.click(screen.getByLabelText('Refresh'));
 
     await waitFor(() => {
-      expect(mockApi.getThreads).toHaveBeenCalledWith({ undecided: true });
       expect(mockApi.getDecisions).toHaveBeenCalled();
     });
   });
@@ -117,8 +138,7 @@ describe('App refresh button', () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText('Digest')).toBeInTheDocument());
 
-    // Make the refresh fetches hang so the in-flight state persists
-    mockApi.getThreads.mockReturnValueOnce(new Promise(() => {}));
+    // Make the refresh fetch hang so the in-flight state persists
     mockApi.getDecisions.mockReturnValueOnce(new Promise(() => {}));
 
     const button = screen.getByLabelText('Refresh');

@@ -5,6 +5,7 @@ export type DecisionsState = {
   T2: DecisionWithThread[];
   T3: DecisionWithThread[];
   T4: DecisionWithThread[];
+  T5: DecisionWithThread[];
 };
 
 // Sort T1/T2/T3/T5 items oldest thread date first.
@@ -31,6 +32,7 @@ export function dedupeDecisions(d: DecisionsState): DecisionsState {
     T2: sortTierItems(dedup(d.T2)),
     T3: sortTierItems(dedup(d.T3)),
     T4: dedup(d.T4),
+    T5: sortTierItems(dedup(d.T5)),
   };
 }
 

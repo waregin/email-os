@@ -111,6 +111,18 @@ describe('GET /api/gmail/decisions', () => {
     expect(res.body.T4).toHaveLength(1);
   });
 
+  it('groups T5 decisions in their own bucket, not lumped into T4', async () => {
+    await createDecision('th-t4-only', 'T4');
+    await createDecision('th-t5-only', 'T5');
+
+    const res = await agent.get('/api/gmail/decisions');
+    expect(res.status).toBe(200);
+    const t5Ids = (res.body.T5 as Array<{ threadId: string }>).map((d) => d.threadId);
+    const t4Ids = (res.body.T4 as Array<{ threadId: string }>).map((d) => d.threadId);
+    expect(t5Ids).toContain('th-t5-only');
+    expect(t4Ids).not.toContain('th-t5-only');
+  });
+
   it('excludes archived decisions', async () => {
     await prisma.triageDecision.create({
       data: { threadId: 'archived-th', userId, priority: 'T1', digestSummary: 'x', archivedAt: new Date() },

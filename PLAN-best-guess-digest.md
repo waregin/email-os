@@ -532,7 +532,7 @@ When a user clicks Followup on a T3/T4 item, open a small inline text input so t
 | ~~12~~ | ~~Feature: in-page refresh button (re-fetches threads + decisions, spinner while in flight)~~ ✓ |
 | ~~13~~ | ~~Feature: followup note — inline input on T3/T4 Followup; note becomes the T2 digestSummary~~ ✓ |
 | ~~14~~ | ~~Phase 5: "Wrong" / "Teach" button flows + tests~~ ✓ |
-| 15 | Phase 6: T5 panel + remove inbox panel + tests |
+| ~~15~~ | ~~Phase 6: T5 panel + remove inbox panel + tests~~ ✓ |
 | 16 | Phase 7: Health check + Rule Health UI + tests |
 
 Backend steps (3–9) are fully implementable and testable before touching the frontend.

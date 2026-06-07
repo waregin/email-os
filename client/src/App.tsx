@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from './api';
 import type { Thread, DecisionWithThread, MatchingThread } from './api';
-import { ThreadDetail } from './components/ThreadDetail';
 import { DigestPanel } from './components/DigestPanel';
-import { parseSender, formatDate } from './utils/text';
 import { dedupeDecisions, sortTierItems } from './utils/decisions';
 import type { DecisionsState } from './utils/decisions';
 import { parseProposal, describeTrigger } from './utils/rules';
@@ -100,26 +98,11 @@ const DIGEST_PANELS = [
 ];
 
 function MainApp() {
-  const [threads, setThreads] = useState<Thread[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [nextPageToken, setNextPageToken] = useState<string | undefined>();
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [teachContext, setTeachContext] = useState<{ thread: Thread; correctTier?: string; decisionId?: string } | null>(null);
-  const [decisions, setDecisions] = useState<DecisionsState>({ T1: [], T2: [], T3: [], T4: [] });
-  const [openTier, setOpenTier] = useState<'T1' | 'T2' | 'T3' | 'T4' | null>('T1');
+  const [decisions, setDecisions] = useState<DecisionsState>({ T1: [], T2: [], T3: [], T4: [], T5: [] });
+  const [openTier, setOpenTier] = useState<'T1' | 'T2' | 'T3' | 'T4' | 'T5' | null>('T1');
   const [refreshing, setRefreshing] = useState(false);
-
-  useEffect(() => {
-    api.getThreads({ undecided: true })
-      .then(({ threads, nextPageToken }) => {
-        setThreads(threads);
-        setNextPageToken(nextPageToken);
-      })
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
 
   useEffect(() => {
     api.getDecisions().then((d) => setDecisions(dedupeDecisions(d))).catch(() => {});
@@ -132,22 +115,10 @@ function MainApp() {
     return () => clearInterval(id);
   }, []);
 
-  function loadMore() {
-    if (!nextPageToken || loadingMore) return;
-    setLoadingMore(true);
-    api.getThreads({ pageToken: nextPageToken, undecided: true })
-      .then(({ threads: more, nextPageToken: next }) => {
-        setThreads((prev) => [...prev, ...more]);
-        setNextPageToken(next);
-      })
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoadingMore(false));
-  }
-
   function removeDecision(decisionId: string) {
     setDecisions((prev) => {
       const result = { ...prev };
-      for (const tier of ['T1', 'T2', 'T3', 'T4'] as const) {
+      for (const tier of ['T1', 'T2', 'T3', 'T4', 'T5'] as const) {
         if (result[tier].some((d) => d.decisionId === decisionId)) {
           result[tier] = result[tier].filter((d) => d.decisionId !== decisionId);
           return result;
@@ -249,21 +220,11 @@ function MainApp() {
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     setError(null);
-    Promise.all([
-      api.getThreads({ undecided: true }).then(({ threads, nextPageToken }) => {
-        setThreads(threads);
-        setNextPageToken(nextPageToken);
-      }),
-      api.getDecisions().then((d) => setDecisions(dedupeDecisions(d))),
-    ])
+    api.getDecisions()
+      .then((d) => setDecisions(dedupeDecisions(d)))
       .catch((err: Error) => setError(err.message))
       .finally(() => setRefreshing(false));
   }, []);
-
-  const decidedThreadIds = new Set(
-    [...decisions.T1, ...decisions.T2, ...decisions.T3, ...decisions.T4].map((d) => d.threadId),
-  );
-  const inboxThreads = threads.filter((t) => !decidedThreadIds.has(t.id));
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
@@ -317,41 +278,25 @@ function MainApp() {
                 onViewThread={() => {}}
               />
             ))}
+            {decisions.T5.length > 0 && (
+              <DigestPanel
+                tier="T5"
+                label="T5 Unclassified"
+                accent="border-dashed border-amber-600/40 bg-amber-500/5"
+                items={decisions.T5}
+                isOpen={openTier === 'T5'}
+                onToggle={() => setOpenTier((prev) => (prev === 'T5' ? null : 'T5'))}
+                onConfirm={handleConfirm}
+                onDone={handleDone}
+                onFollowup={handleFollowup}
+                onOpenTeach={handleOpenTeach}
+                onConfirmAll={handleConfirmAll}
+                onViewThread={() => {}}
+              />
+            )}
           </div>
+          {error && <p className="text-sm text-red-400 py-2">Error: {error}</p>}
         </section>
-
-        {/* Thread list */}
-        <section className="space-y-3">
-          <SectionLabel>Inbox{!loading ? ` (${inboxThreads.length})` : ''}</SectionLabel>
-          {loading && <p className="text-sm text-gray-600 py-2">Loading threads…</p>}
-          {error   && <p className="text-sm text-red-400 py-2">Error: {error}</p>}
-          {!loading && !error && inboxThreads.length === 0 && (
-            <p className="text-sm text-gray-600 py-2">No threads found.</p>
-          )}
-          {inboxThreads.length > 0 && (
-            <div className="rounded-lg border border-gray-800 overflow-clip divide-y divide-gray-800">
-              {inboxThreads.map((thread) => (
-                <ThreadRow
-                  key={thread.id}
-                  thread={thread}
-                  expanded={expandedId === thread.id}
-                  onToggle={() => setExpandedId(expandedId === thread.id ? null : thread.id)}
-                  onTeach={(t) => setTeachContext({ thread: t })}
-                />
-              ))}
-              {nextPageToken && (
-                <button
-                  onClick={loadMore}
-                  disabled={loadingMore}
-                  className="w-full px-4 py-3 text-sm text-gray-400 hover:text-gray-200 hover:bg-gray-900/60 disabled:text-gray-600 disabled:cursor-not-allowed transition-colors text-center bg-gray-900/20 tracking-wider"
-                >
-                  {loadingMore ? 'LOADING…' : 'LOAD MORE…'}
-                </button>
-              )}
-            </div>
-          )}
-        </section>
-
 
       </div>
 
@@ -733,81 +678,3 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function TeachButton({ onClick }: { onClick: (e: React.MouseEvent) => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="shrink-0 text-xs text-gray-500 hover:text-gray-300 px-2 py-1 rounded border border-gray-700 hover:border-gray-600 transition-colors"
-    >
-      Teach
-    </button>
-  );
-}
-
-function ThreadRow({
-  thread,
-  expanded,
-  onToggle,
-  onTeach,
-}: {
-  thread: Thread;
-  expanded: boolean;
-  onToggle: () => void;
-  onTeach: (thread: Thread) => void;
-}) {
-  const rowRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (expanded && rowRef.current) {
-      rowRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [expanded]);
-
-  return (
-    <div ref={rowRef}>
-      <div
-        className={`sticky top-0 z-10 ${expanded ? 'bg-gray-950' : ''}`}
-      >
-        <div
-          className={`flex items-center gap-2 px-4 py-3 hover:bg-gray-900/60 transition-colors ${
-            thread.isUnread ? 'bg-gray-900/40' : ''
-          } ${expanded ? 'border-b border-gray-800' : ''}`}
-        >
-          <div
-            className="flex-1 min-w-0 cursor-pointer"
-            onClick={onToggle}
-          >
-            <div className="flex items-baseline justify-between gap-3 min-w-0">
-              <span className="flex items-baseline gap-1.5 truncate min-w-0">
-                <span className={`text-sm truncate ${thread.isUnread ? 'font-semibold text-gray-100' : 'text-gray-300'}`}>
-                  {parseSender(thread.sender)}
-                </span>
-                {thread.unreadCount > 1 && (
-                  <span className="text-xs font-semibold text-blue-400 shrink-0">{thread.unreadCount}</span>
-                )}
-              </span>
-              <span className="text-xs text-gray-600 whitespace-nowrap shrink-0">
-                {formatDate(thread.date)}
-              </span>
-            </div>
-            <div className={`text-sm truncate mt-0.5 ${thread.isUnread ? 'text-gray-200' : 'text-gray-400'}`}>
-              {thread.subject}
-            </div>
-            {thread.snippet && (
-              <div className="text-xs text-gray-600 truncate mt-0.5">{thread.snippet}</div>
-            )}
-          </div>
-          <TeachButton onClick={(e) => { e.stopPropagation(); onTeach(thread); }} />
-        </div>
-      </div>
-      {expanded && (
-        <div className="bg-gray-900">
-          <ThreadDetail threadId={thread.id} />
-          <div className="px-4 py-3 border-t border-gray-800 flex justify-end">
-            <TeachButton onClick={() => onTeach(thread)} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}

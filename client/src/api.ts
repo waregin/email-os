@@ -100,7 +100,7 @@ export const api = {
     request<{ ok: boolean }>(`/api/gmail/threads/${id}/read`, { method: 'POST' }),
 
   getDecisions: () =>
-    request<{ T1: DecisionWithThread[]; T2: DecisionWithThread[]; T3: DecisionWithThread[]; T4: DecisionWithThread[] }>(
+    request<{ T1: DecisionWithThread[]; T2: DecisionWithThread[]; T3: DecisionWithThread[]; T4: DecisionWithThread[]; T5: DecisionWithThread[] }>(
       '/api/gmail/decisions',
     ),
 

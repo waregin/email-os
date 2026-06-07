@@ -25,7 +25,7 @@ vi.mock('../../api', () => ({
 import { api } from '../../api';
 const mockApi = vi.mocked(api);
 
-const EMPTY = { T1: [], T2: [], T3: [], T4: [] };
+const EMPTY = { T1: [], T2: [], T3: [], T4: [], T5: [] };
 
 function decision(overrides: Partial<DecisionWithThread> & { decisionId: string; threadId: string; priority: string }): DecisionWithThread {
   return {

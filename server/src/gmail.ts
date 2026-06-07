@@ -272,7 +272,7 @@ gmailRouter.get('/decisions', async (req, res) => {
       thread: { subject: string; sender: string; date: string; snippet: string; unreadCount: number; messageCount: number };
     };
 
-    const grouped: Record<string, DecisionWithThread[]> = { T1: [], T2: [], T3: [], T4: [] };
+    const grouped: Record<string, DecisionWithThread[]> = { T1: [], T2: [], T3: [], T4: [], T5: [] };
 
     for (const d of decisions) {
       const cache = cacheMap.get(d.threadId);
