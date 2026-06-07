@@ -937,3 +937,106 @@ describe('POST /api/agent/rules/:ruleId/apply', () => {
     vi.restoreAllMocks();
   });
 });
+
+describe('GET /api/agent/rules/with-suggestions', () => {
+  it('returns empty array when no rules have pending suggestions', async () => {
+    await prisma.triageRule.create({
+      data: { userId, trigger: '{}', action: 'digest', priority: 'T3', digestSummaryTemplate: '{subject}', source: 'taught' },
+    });
+    const res = await agent.get('/api/agent/rules/with-suggestions');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('returns only active rules with a non-null pendingSuggestion', async () => {
+    const withSuggestion = await prisma.triageRule.create({
+      data: { userId, trigger: JSON.stringify({ type: 'sender_domain', domain: 'a.com' }), action: 'digest', priority: 'T2', digestSummaryTemplate: '{subject}', source: 'taught', pendingSuggestion: JSON.stringify({ reason: 'too broad' }) },
+    });
+    await prisma.triageRule.create({
+      data: { userId, trigger: '{}', action: 'digest', priority: 'T3', digestSummaryTemplate: '{subject}', source: 'taught' },
+    });
+    // Inactive rule with suggestion — should not be returned
+    await prisma.triageRule.create({
+      data: { userId, trigger: '{}', action: 'digest', priority: 'T3', digestSummaryTemplate: '{subject}', source: 'taught', isActive: false, pendingSuggestion: JSON.stringify({ reason: 'inactive' }) },
+    });
+
+    const res = await agent.get('/api/agent/rules/with-suggestions');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].id).toBe(withSuggestion.id);
+    expect(res.body[0].pendingSuggestion).toBe(JSON.stringify({ reason: 'too broad' }));
+  });
+});
+
+describe('POST /api/agent/rules/:ruleId/suggestion/accept', () => {
+  it('deactivates the old rule and creates a new taught rule from the suggestion', async () => {
+    const suggestion = {
+      trigger: { type: 'sender_domain', domain: 'better.com' },
+      priority: 'T2',
+      digestSummaryTemplate: 'Better: {subject}',
+      notes: 'only newsletters',
+      reason: 'old trigger too broad',
+    };
+    const rule = await prisma.triageRule.create({
+      data: { userId, trigger: JSON.stringify({ type: 'sender_domain', domain: 'old.com' }), action: 'digest', priority: 'T3', digestSummaryTemplate: '{subject}', source: 'taught', pendingSuggestion: JSON.stringify(suggestion) },
+    });
+
+    const res = await agent.post(`/api/agent/rules/${rule.id}/suggestion/accept`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.ruleId).toBeDefined();
+
+    const oldRule = await prisma.triageRule.findUnique({ where: { id: rule.id } });
+    expect(oldRule?.isActive).toBe(false);
+
+    const newRule = await prisma.triageRule.findUnique({ where: { id: res.body.ruleId } });
+    expect(newRule?.source).toBe('taught');
+    expect(newRule?.parentId).toBe(rule.id);
+    expect(newRule?.priority).toBe('T2');
+    expect(newRule?.digestSummaryTemplate).toBe('Better: {subject}');
+    expect(newRule?.notes).toBe('only newsletters');
+    expect(JSON.parse(newRule!.trigger)).toMatchObject({ type: 'sender_domain', domain: 'better.com' });
+  });
+
+  it('returns 400 when pendingSuggestion is not valid JSON', async () => {
+    const rule = await prisma.triageRule.create({
+      data: { userId, trigger: '{}', action: 'digest', priority: 'T3', digestSummaryTemplate: '{subject}', source: 'taught', pendingSuggestion: 'not-json' },
+    });
+    const res = await agent.post(`/api/agent/rules/${rule.id}/suggestion/accept`);
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 when rule has no pending suggestion', async () => {
+    const rule = await prisma.triageRule.create({
+      data: { userId, trigger: '{}', action: 'digest', priority: 'T3', digestSummaryTemplate: '{subject}', source: 'taught' },
+    });
+    const res = await agent.post(`/api/agent/rules/${rule.id}/suggestion/accept`);
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 for a non-existent rule', async () => {
+    const res = await agent.post('/api/agent/rules/nonexistent/suggestion/accept');
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('POST /api/agent/rules/:ruleId/suggestion/dismiss', () => {
+  it('clears pendingSuggestion without deactivating the rule', async () => {
+    const rule = await prisma.triageRule.create({
+      data: { userId, trigger: JSON.stringify({ type: 'sender_domain', domain: 'a.com' }), action: 'digest', priority: 'T3', digestSummaryTemplate: '{subject}', source: 'taught', pendingSuggestion: JSON.stringify({ reason: 'too broad' }) },
+    });
+
+    const res = await agent.post(`/api/agent/rules/${rule.id}/suggestion/dismiss`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+
+    const updated = await prisma.triageRule.findUnique({ where: { id: rule.id } });
+    expect(updated?.isActive).toBe(true);
+    expect(updated?.pendingSuggestion).toBeNull();
+  });
+
+  it('returns 404 for a non-existent rule', async () => {
+    const res = await agent.post('/api/agent/rules/nonexistent/suggestion/dismiss');
+    expect(res.status).toBe(404);
+  });
+});

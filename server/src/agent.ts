@@ -361,3 +361,90 @@ agentRouter.post('/rules/:ruleId/apply', async (req, res) => {
     res.status(500).json({ error: 'Failed to apply rule' });
   }
 });
+
+agentRouter.get('/rules/with-suggestions', async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    if (!userId) { res.status(401).json({ error: 'Not authenticated' }); return; }
+
+    const rules = await prisma.triageRule.findMany({
+      where: { userId, isActive: true, pendingSuggestion: { not: null } },
+      select: {
+        id: true,
+        trigger: true,
+        priority: true,
+        categoryLabel: true,
+        digestSummaryTemplate: true,
+        notes: true,
+        source: true,
+        pendingSuggestion: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    res.json(rules);
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch rules with suggestions' });
+  }
+});
+
+agentRouter.post('/rules/:ruleId/suggestion/accept', async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    if (!userId) { res.status(401).json({ error: 'Not authenticated' }); return; }
+
+    const { ruleId } = req.params;
+    const rule = await prisma.triageRule.findUnique({ where: { id: ruleId } });
+    if (!rule || rule.userId !== userId || !rule.isActive || !rule.pendingSuggestion) {
+      res.status(404).json({ error: 'Rule or suggestion not found' });
+      return;
+    }
+
+    let suggestion: Record<string, unknown>;
+    try {
+      suggestion = JSON.parse(rule.pendingSuggestion) as Record<string, unknown>;
+    } catch {
+      res.status(400).json({ error: 'Invalid suggestion JSON' });
+      return;
+    }
+
+    await prisma.triageRule.update({ where: { id: rule.id }, data: { isActive: false } });
+    const newRule = await prisma.triageRule.create({
+      data: {
+        userId,
+        source: 'taught',
+        isActive: true,
+        parentId: rule.id,
+        trigger: JSON.stringify(suggestion.trigger ?? JSON.parse(rule.trigger)),
+        action: 'digest',
+        priority: String(suggestion.priority ?? rule.priority),
+        categoryLabel: String(suggestion.categoryLabel ?? '') || rule.categoryLabel,
+        digestSummaryTemplate: String(suggestion.digestSummaryTemplate ?? rule.digestSummaryTemplate),
+        notes: String(suggestion.notes ?? rule.notes ?? '') || null,
+      },
+    });
+
+    res.json({ ok: true, ruleId: newRule.id });
+  } catch {
+    res.status(500).json({ error: 'Failed to accept suggestion' });
+  }
+});
+
+agentRouter.post('/rules/:ruleId/suggestion/dismiss', async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    if (!userId) { res.status(401).json({ error: 'Not authenticated' }); return; }
+
+    const { ruleId } = req.params;
+    const rule = await prisma.triageRule.findUnique({ where: { id: ruleId } });
+    if (!rule || rule.userId !== userId || !rule.isActive) {
+      res.status(404).json({ error: 'Rule not found' });
+      return;
+    }
+
+    await prisma.triageRule.update({ where: { id: rule.id }, data: { pendingSuggestion: null } });
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: 'Failed to dismiss suggestion' });
+  }
+});
