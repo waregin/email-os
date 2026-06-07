@@ -756,6 +756,26 @@ describe('runTriagePass', () => {
     expect(rule!.parentId).toBeNull(); // fresh rule, not a modification
   });
 
+  it('archives decisions for threads no longer in inbox (e.g. moved to spam)', async () => {
+    const user = await createTestUser();
+    const rule = await createTestRule(user.id, { priority: 'T3' });
+    // A stale decision whose thread is no longer returned by the inbox query
+    const staleDecision = await prisma.triageDecision.create({
+      data: { threadId: 'spam-th', userId: user.id, priority: 'T3', digestSummary: 'old', ruleId: rule.id },
+    });
+
+    // Inbox only contains a different thread
+    mockThreadsList.mockResolvedValueOnce({
+      data: { threads: [{ id: 'inbox-th', snippet: 'x' }], nextPageToken: null },
+    });
+    mockThreadsGet.mockResolvedValueOnce(makeGmailThread('inbox-th', 'Inbox Email', 'someone@example.com'));
+
+    await runTriagePass(user.id);
+
+    const archived = await prisma.triageDecision.findUnique({ where: { id: staleDecision.id } });
+    expect(archived!.archivedAt).not.toBeNull();
+  });
+
   it('persists refreshed OAuth tokens to DB when the tokens event fires', async () => {
     const user = await createTestUser();
     mockThreadsList.mockResolvedValueOnce({ data: { threads: [], nextPageToken: null } });

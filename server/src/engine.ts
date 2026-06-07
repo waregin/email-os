@@ -50,6 +50,22 @@ export async function runTriagePass(userId: string): Promise<{
     pageToken = page.data.nextPageToken ?? undefined;
   } while (pageToken);
 
+  // Archive decisions for threads no longer in inbox (moved to spam, deleted, archived by user, etc.)
+  const inboxThreadIds = new Set(rawThreads.flatMap((t) => (t.id ? [t.id] : [])));
+  const allActiveDecisions = await prisma.triageDecision.findMany({
+    where: { userId, archivedAt: null },
+    select: { id: true, threadId: true },
+  });
+  const staleDecisionIds = allActiveDecisions
+    .filter((d) => !inboxThreadIds.has(d.threadId))
+    .map((d) => d.id);
+  if (staleDecisionIds.length > 0) {
+    await prisma.triageDecision.updateMany({
+      where: { id: { in: staleDecisionIds } },
+      data: { archivedAt: new Date() },
+    });
+  }
+
   // Bulk-load active non-null-ruleId decisions to skip already-decided threads.
   // T5 decisions (ruleId: null) are intentionally excluded so those threads are re-evaluated.
   const activeDecisions = await prisma.triageDecision.findMany({
