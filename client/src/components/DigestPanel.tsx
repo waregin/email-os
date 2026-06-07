@@ -5,7 +5,7 @@ import { parseSender, formatDate } from '../utils/text';
 import { buildGroups } from '../utils/decisions';
 
 interface DigestPanelProps {
-  tier: 'T1' | 'T2' | 'T3' | 'T4';
+  tier: 'T1' | 'T2' | 'T3' | 'T4' | 'T5';
   label: string;
   accent: string;
   items: DecisionWithThread[];
@@ -26,6 +26,7 @@ function DigestItemRow({
   expanded,
   isT12,
   isT4,
+  isT5,
   onToggle,
   onDone,
   onConfirm,
@@ -36,6 +37,7 @@ function DigestItemRow({
   expanded: boolean;
   isT12: boolean;
   isT4: boolean;
+  isT5: boolean;
   onToggle: () => void;
   onDone: (decisionId: string) => void;
   onConfirm: (decisionId: string) => void;
@@ -97,7 +99,7 @@ function DigestItemRow({
               {formatDate(item.thread.date)}
             </span>
           </div>
-          {isT4 ? (
+          {isT4 || isT5 ? (
             <>
               <div className="text-sm truncate text-gray-400 mt-0.5">{item.thread.subject}</div>
               {item.thread.snippet && (
@@ -114,7 +116,14 @@ function DigestItemRow({
           className="flex gap-1 shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
         >
-          {isT12 ? (
+          {isT5 ? (
+            <button
+              onClick={() => setTierPickerOpen(true)}
+              className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors"
+            >
+              Teach
+            </button>
+          ) : isT12 ? (
             item.userFlagged ? (
               <button
                 onClick={() => onDone(item.decisionId)}
@@ -305,6 +314,7 @@ function DigestGroupPanel({
                 expanded={expandedDecisionId === item.decisionId}
                 isT12={false}
                 isT4={true}
+                isT5={false}
                 onToggle={() => {
                   const opening = expandedDecisionId !== item.decisionId;
                   setExpandedDecisionId(opening ? item.decisionId : null);
@@ -347,6 +357,7 @@ export function DigestPanel({
 }: DigestPanelProps) {
   const isT12 = tier === 'T1' || tier === 'T2';
   const isT4 = tier === 'T4';
+  const isT5 = tier === 'T5';
   const [snapshotItems, setSnapshotItems] = useState<DecisionWithThread[]>([]);
   const [expandedDecisionId, setExpandedDecisionId] = useState<string | null>(null);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
@@ -497,6 +508,7 @@ export function DigestPanel({
                     expanded={expandedDecisionId === item.decisionId}
                     isT12={isT12}
                     isT4={false}
+                    isT5={isT5}
                     onToggle={() => {
                       const opening = expandedDecisionId !== item.decisionId;
                       setExpandedDecisionId(opening ? item.decisionId : null);
@@ -509,14 +521,16 @@ export function DigestPanel({
                   />
                 ))}
               </div>
-              <div className="px-4 py-2 border-t border-gray-800/60 flex justify-end">
-                <button
-                  onClick={handleConfirmAll}
-                  className="text-xs px-3 py-1 rounded border border-gray-700 text-gray-400 hover:text-green-400 hover:border-green-700 transition-colors"
-                >
-                  Confirm all
-                </button>
-              </div>
+              {!isT5 && (
+                <div className="px-4 py-2 border-t border-gray-800/60 flex justify-end">
+                  <button
+                    onClick={handleConfirmAll}
+                    className="text-xs px-3 py-1 rounded border border-gray-700 text-gray-400 hover:text-green-400 hover:border-green-700 transition-colors"
+                  >
+                    Confirm all
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
