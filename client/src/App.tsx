@@ -104,16 +104,16 @@ function MainApp() {
   const [openTier, setOpenTier] = useState<'T1' | 'T2' | 'T3' | 'T4' | 'T5' | null>('T1');
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
+  const loadDecisions = useCallback(() => {
     api.getDecisions().then((d) => setDecisions(dedupeDecisions(d))).catch(() => {});
   }, []);
 
+  useEffect(() => { loadDecisions(); }, [loadDecisions]);
+
   useEffect(() => {
-    const id = setInterval(() => {
-      api.getDecisions().then((d) => setDecisions(dedupeDecisions(d))).catch(() => {});
-    }, 60_000);
+    const id = setInterval(loadDecisions, 60_000);
     return () => clearInterval(id);
-  }, []);
+  }, [loadDecisions]);
 
   function removeDecision(decisionId: string) {
     setDecisions((prev) => {
@@ -213,9 +213,6 @@ function MainApp() {
   );
 
   const handleTeachClose = useCallback(() => setTeachContext(null), []);
-  const handleDecisionsRefresh = useCallback(() => {
-    api.getDecisions().then((d) => setDecisions(dedupeDecisions(d))).catch(() => {});
-  }, []);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -303,7 +300,7 @@ function MainApp() {
         correctTier={teachContext?.correctTier}
         decisionId={teachContext?.decisionId}
         onClose={handleTeachClose}
-        onDecisionsRefresh={handleDecisionsRefresh}
+        onDecisionsRefresh={loadDecisions}
       />
     </div>
   );
