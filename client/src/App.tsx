@@ -11,6 +11,14 @@ import type { ProposedRule } from './utils/rules';
 
 type AuthState = 'loading' | 'unauthenticated' | 'authenticated';
 
+// Envelope artwork copied verbatim from public/favicon.svg so the dynamic
+// unread-badge favicon is pixel-identical to the static one shown before login.
+// IMPORTANT: if you change the envelope, update BOTH this constant and
+// public/favicon.svg — they intentionally duplicate the same artwork.
+// Nested in its own 0 0 48 31.6 viewBox so it fills the top of the 32x32 icon,
+// leaving the bottom-right for the count badge drawn below.
+const ENVELOPE_SVG = `<svg x="0" y="0" width="32" height="21" viewBox="0 0 48 31.6"><defs><clipPath id="cde676591f"><path d="M 0.488281 0 L 47.507812 0 L 47.507812 31.59375 L 0.488281 31.59375 Z M 0.488281 0 " clip-rule="nonzero"/></clipPath><clipPath id="131108836b"><path d="M 4 3 L 44 3 L 44 31.59375 L 4 31.59375 Z M 4 3 " clip-rule="nonzero"/></clipPath></defs><g clip-path="url(#cde676591f)"><path fill="#00d3e8" d="M 2.441406 0 L 45.558594 0 C 45.804688 0 46.039062 0.046875 46.265625 0.140625 C 46.492188 0.234375 46.691406 0.367188 46.867188 0.542969 C 47.039062 0.714844 47.171875 0.914062 47.265625 1.140625 C 47.359375 1.367188 47.40625 1.605469 47.40625 1.847656 L 47.40625 29.523438 C 47.40625 29.769531 47.359375 30.007812 47.265625 30.234375 C 47.171875 30.457031 47.039062 30.660156 46.867188 30.832031 C 46.691406 31.003906 46.492188 31.140625 46.265625 31.234375 C 46.039062 31.328125 45.804688 31.375 45.558594 31.375 L 2.441406 31.375 C 2.195312 31.375 1.960938 31.328125 1.734375 31.234375 C 1.507812 31.140625 1.308594 31.003906 1.132812 30.832031 C 0.960938 30.660156 0.828125 30.457031 0.734375 30.234375 C 0.640625 30.007812 0.59375 29.769531 0.59375 29.523438 L 0.59375 1.847656 C 0.59375 1.605469 0.640625 1.367188 0.734375 1.140625 C 0.828125 0.914062 0.960938 0.714844 1.132812 0.542969 C 1.308594 0.367188 1.507812 0.234375 1.734375 0.140625 C 1.960938 0.046875 2.195312 0 2.441406 0 Z M 2.441406 0 " fill-opacity="1" fill-rule="nonzero"/></g><g clip-path="url(#131108836b)"><path fill="#001b3d" d="M 4.855469 3.816406 L 43.140625 3.816406 L 43.140625 31.375 L 4.855469 31.375 Z M 4.855469 3.816406 " fill-opacity="1" fill-rule="nonzero"/></g><path fill="#62e9f7" d="M 46.835938 0.515625 L 26.464844 18.738281 C 26.128906 19.042969 25.746094 19.273438 25.320312 19.4375 C 24.894531 19.601562 24.453125 19.679688 24 19.679688 C 23.546875 19.679688 23.105469 19.601562 22.679688 19.4375 C 22.253906 19.273438 21.871094 19.042969 21.535156 18.738281 L 1.167969 0.515625 C 1.523438 0.167969 1.945312 0 2.441406 0 L 45.558594 0 C 46.054688 -0.00390625 46.480469 0.167969 46.835938 0.515625 Z M 46.835938 0.515625 " fill-opacity="1" fill-rule="nonzero"/><path fill="#001b3d" d="M 6.988281 0 L 24 15.222656 L 41.011719 0 Z M 6.988281 0 " fill-opacity="1" fill-rule="nonzero"/></svg>`;
+
 function updateFavicon(count: number): void {
   const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
   if (!link) return;
@@ -21,9 +29,7 @@ function updateFavicon(count: number): void {
 
   const fontSize = 23;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="22" rx="5" fill="#00d3e8"/>
-  <rect x="4" y="0" width="24" height="22" rx="2" fill="#001b3d"/>
-  <path d="M0 0 L16 9 L32 0" fill="none" stroke="#62e9f7" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  ${ENVELOPE_SVG}
   <rect x="${30-textLength}" y="12" width="${textLength+2}" height="20" rx="2" fill="#661414"/>
   <text x="31" y="22" text-anchor="end" dominant-baseline="central" fill="white" font-family="system-ui,sans-serif" font-weight="bold"
    font-size="${fontSize}" textLength="${textLength}" lengthAdjust="spacingAndGlyphs">${label}</text>
