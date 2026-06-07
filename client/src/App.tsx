@@ -193,7 +193,8 @@ function MainApp() {
     api.doneDecision(decisionId).catch(() => {});
   }
 
-  function handleFollowup(decisionId: string) {
+  function handleFollowup(decisionId: string, note?: string) {
+    const trimmedNote = note?.trim();
     setDecisions((prev) => {
       let found: DecisionWithThread | undefined;
       let fromTier: 'T3' | 'T4' | undefined;
@@ -205,10 +206,18 @@ function MainApp() {
       return {
         ...prev,
         [fromTier]: prev[fromTier].filter((d) => d.decisionId !== decisionId),
-        T2: sortTierItems([{ ...found, userFlagged: true, priority: 'T2' }, ...prev.T2]),
+        T2: sortTierItems([
+          {
+            ...found,
+            userFlagged: true,
+            priority: 'T2',
+            digestSummary: trimmedNote || found.digestSummary,
+          },
+          ...prev.T2,
+        ]),
       };
     });
-    api.followupDecision(decisionId).catch(() => {});
+    api.followupDecision(decisionId, trimmedNote).catch(() => {});
   }
 
   function handleConfirmAll(decisionIds: string[], tier: string) {

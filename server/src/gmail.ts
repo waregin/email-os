@@ -375,14 +375,25 @@ gmailRouter.post('/decisions/:id/followup', async (req, res) => {
     const userId = req.session.userId;
     if (!userId) { res.status(401).json({ error: 'Not authenticated' }); return; }
 
+    const { note } = (req.body ?? {}) as { note?: string };
+
     const decision = await prisma.triageDecision.findUnique({ where: { id: req.params.id } });
     if (!decision || decision.userId !== userId) {
       res.status(404).json({ error: 'Decision not found' }); return;
     }
 
+    // A followup note records why the user is following up; it replaces the
+    // generic T3/T4 summary on the resulting T2 decision. Omit when blank.
+    const trimmedNote = typeof note === 'string' ? note.trim() : '';
     await prisma.triageDecision.update({
       where: { id: decision.id },
-      data: { wasCorrect: true, confirmedByUser: true, userFlagged: true, priority: 'T2' },
+      data: {
+        wasCorrect: true,
+        confirmedByUser: true,
+        userFlagged: true,
+        priority: 'T2',
+        ...(trimmedNote ? { digestSummary: trimmedNote } : {}),
+      },
     });
 
     const auth = getAuthenticatedClient(req);

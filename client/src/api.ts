@@ -110,8 +110,11 @@ export const api = {
   doneDecision: (decisionId: string) =>
     request<{ ok: boolean }>(`/api/gmail/decisions/${decisionId}/done`, { method: 'POST' }),
 
-  followupDecision: (decisionId: string) =>
-    request<{ ok: boolean }>(`/api/gmail/decisions/${decisionId}/followup`, { method: 'POST' }),
+  followupDecision: (decisionId: string, note?: string) =>
+    request<{ ok: boolean }>(`/api/gmail/decisions/${decisionId}/followup`, {
+      method: 'POST',
+      body: JSON.stringify(note ? { note } : {}),
+    }),
 
   confirmAll: (decisionIds: string[], tier: string) =>
     request<{ ok: boolean; processed: number }>('/api/gmail/decisions/confirm-all', {

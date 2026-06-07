@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../../App';
 import type { DecisionWithThread } from '../../api';
@@ -169,6 +169,8 @@ describe('MainApp decision handlers', () => {
     await user.click(screen.getByText('T3 Summarized'));
     await waitFor(() => expect(screen.getByText('Mid item')).toBeInTheDocument());
     await user.click(screen.getByText('Followup'));
+    const noteInput = screen.getByLabelText('Followup note');
+    await user.click(within(noteInput.closest('div')!).getByText('Confirm'));
 
     // Open T2 and check that items appear oldest-first (Old, Mid, New)
     await waitFor(() => expect(screen.getByText('T2 Action Required')).toBeInTheDocument());
@@ -196,8 +198,11 @@ describe('MainApp decision handlers', () => {
 
     await waitFor(() => expect(screen.getByText('Summarized item')).toBeInTheDocument());
     await user.click(screen.getByText('Followup'));
+    const noteInput = screen.getByLabelText('Followup note');
+    await user.click(within(noteInput.closest('div')!).getByText('Confirm'));
 
-    expect(mockApi.followupDecision).toHaveBeenCalledWith('d1');
+    // Note is prefilled with the thread subject and passed through to the API
+    expect(mockApi.followupDecision).toHaveBeenCalledWith('d1', 'Thread subject');
     await waitFor(() => expect(screen.queryByText('Summarized item')).not.toBeInTheDocument());
   });
 });

@@ -13,7 +13,7 @@ interface DigestPanelProps {
   onToggle: () => void;
   onConfirm: (decisionId: string) => void;
   onDone: (decisionId: string) => void;
-  onFollowup: (decisionId: string) => void;
+  onFollowup: (decisionId: string, note?: string) => void;
   onMisclassified: (decisionId: string, threadId: string) => void;
   onConfirmAll: (decisionIds: string[], tier: string) => void;
   onViewThread: (threadId: string) => void;
@@ -37,11 +37,13 @@ function DigestItemRow({
   onToggle: () => void;
   onDone: (decisionId: string) => void;
   onConfirm: (decisionId: string) => void;
-  onFollowup: (decisionId: string) => void;
+  onFollowup: (decisionId: string, note?: string) => void;
   onMisclassified: (decisionId: string, threadId: string) => void;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const prevExpanded = useRef(expanded);
+  const [followupMode, setFollowupMode] = useState(false);
+  const [note, setNote] = useState('');
 
   useEffect(() => {
     if (prevExpanded.current === expanded) return;
@@ -50,6 +52,16 @@ function DigestItemRow({
   }, [expanded]);
 
   const confirmed = item.confirmedByUser;
+
+  function openFollowup() {
+    setNote(item.thread.subject);
+    setFollowupMode(true);
+  }
+
+  function confirmFollowup() {
+    onFollowup(item.decisionId, note);
+    setFollowupMode(false);
+  }
 
   return (
     <div ref={rowRef} className={confirmed ? 'opacity-50' : ''}>
@@ -135,7 +147,7 @@ function DigestItemRow({
                 Confirm
               </button>
               <button
-                onClick={() => onFollowup(item.decisionId)}
+                onClick={openFollowup}
                 className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-orange-400 hover:border-orange-500 transition-colors"
               >
                 Followup
@@ -151,6 +163,38 @@ function DigestItemRow({
         </div>
       </div>
       </div>
+      {followupMode && (
+        <div
+          className="flex items-center gap-2 px-4 py-2 border-b border-gray-800/60 bg-gray-900/30"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') confirmFollowup();
+              if (e.key === 'Escape') setFollowupMode(false);
+            }}
+            autoFocus
+            placeholder="Why are you following up?"
+            aria-label="Followup note"
+            className="flex-1 min-w-0 text-xs bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500"
+          />
+          <button
+            onClick={confirmFollowup}
+            className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-orange-400 hover:border-orange-500 transition-colors shrink-0"
+          >
+            Confirm
+          </button>
+          <button
+            onClick={() => setFollowupMode(false)}
+            className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors shrink-0"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
       {expanded && (
         <div className="bg-gray-950/40">
           <ThreadDetail threadId={item.threadId} />
@@ -183,7 +227,7 @@ function DigestGroupPanel({
   onViewThread: (threadId: string) => void;
   onDone: (id: string) => void;
   onConfirm: (id: string) => void;
-  onFollowup: (id: string) => void;
+  onFollowup: (id: string, note?: string) => void;
   onMisclassified: (id: string, threadId: string) => void;
   onConfirmAll: (items: DecisionWithThread[]) => void;
 }) {
@@ -316,9 +360,9 @@ export function DigestPanel({
     onDone(decisionId);
   }
 
-  function handleFollowup(decisionId: string) {
+  function handleFollowup(decisionId: string, note?: string) {
     removeFromSnapshot(decisionId);
-    onFollowup(decisionId);
+    onFollowup(decisionId, note);
   }
 
   function handleMisclassified(decisionId: string, threadId: string) {

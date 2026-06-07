@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DigestPanel } from '../../components/DigestPanel';
 import type { DecisionWithThread } from '../../api';
@@ -164,13 +164,44 @@ describe('DigestPanel actions', () => {
     expect(props.onViewThread).toHaveBeenCalledWith('t-view');
   });
 
-  it('clicking Followup calls onFollowup', async () => {
+  it('clicking Followup reveals an inline note input prefilled with the subject', async () => {
     const user = userEvent.setup();
     const props = defaultProps();
     const items = [makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T3' })];
     render(<DigestPanel tier="T3" items={items} isOpen={true} {...props} />);
     await user.click(screen.getByText('Followup'));
-    expect(props.onFollowup).toHaveBeenCalledWith('d1');
+    const noteInput = screen.getByLabelText('Followup note') as HTMLInputElement;
+    expect(noteInput).toBeInTheDocument();
+    expect(noteInput.value).toBe('Thread subject');
+    // Opening the input must not yet fire the followup
+    expect(props.onFollowup).not.toHaveBeenCalled();
+  });
+
+  it('submitting the followup note calls onFollowup with the edited note', async () => {
+    const user = userEvent.setup();
+    const props = defaultProps();
+    const items = [makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T3' })];
+    render(<DigestPanel tier="T3" items={items} isOpen={true} {...props} />);
+    await user.click(screen.getByText('Followup'));
+    const noteInput = screen.getByLabelText('Followup note');
+    await user.clear(noteInput);
+    await user.type(noteInput, 'Reply with pricing by Friday');
+    const followupRow = noteInput.closest('div')!;
+    await user.click(within(followupRow).getByText('Confirm'));
+    expect(props.onFollowup).toHaveBeenCalledWith('d1', 'Reply with pricing by Friday');
+  });
+
+  it('cancelling the followup note hides the input without calling onFollowup', async () => {
+    const user = userEvent.setup();
+    const props = defaultProps();
+    const items = [makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T3' })];
+    render(<DigestPanel tier="T3" items={items} isOpen={true} {...props} />);
+    await user.click(screen.getByText('Followup'));
+    const noteInput = screen.getByLabelText('Followup note');
+    const followupRow = noteInput.closest('div')!;
+    await user.click(within(followupRow).getByText('Cancel'));
+    expect(screen.queryByLabelText('Followup note')).not.toBeInTheDocument();
+    expect(props.onFollowup).not.toHaveBeenCalled();
   });
 
   it('clicking Wrong calls onMisclassified with decisionId and threadId', async () => {

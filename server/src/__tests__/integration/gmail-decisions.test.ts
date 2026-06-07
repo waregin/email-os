@@ -261,6 +261,36 @@ describe('POST /api/gmail/decisions/:id/followup', () => {
     expect(call.requestBody.removeLabelIds).toEqual(['UNREAD']);
   });
 
+  it('updates digestSummary to the note when one is provided', async () => {
+    const d = await createDecision('th-followup-note', 'T3');
+    const res = await agent
+      .post(`/api/gmail/decisions/${d.id}/followup`)
+      .send({ note: 'Reply with pricing by Friday' });
+    expect(res.status).toBe(200);
+
+    const updated = await prisma.triageDecision.findUnique({ where: { id: d.id } });
+    expect(updated!.digestSummary).toBe('Reply with pricing by Friday');
+    expect(updated!.priority).toBe('T2');
+  });
+
+  it('leaves digestSummary unchanged when no note is provided', async () => {
+    const d = await createDecision('th-followup-nonote', 'T3');
+    const res = await agent.post(`/api/gmail/decisions/${d.id}/followup`).send({});
+    expect(res.status).toBe(200);
+
+    const updated = await prisma.triageDecision.findUnique({ where: { id: d.id } });
+    expect(updated!.digestSummary).toBe(d.digestSummary);
+  });
+
+  it('treats a blank/whitespace note as no note', async () => {
+    const d = await createDecision('th-followup-blank', 'T3');
+    const res = await agent.post(`/api/gmail/decisions/${d.id}/followup`).send({ note: '   ' });
+    expect(res.status).toBe(200);
+
+    const updated = await prisma.triageDecision.findUnique({ where: { id: d.id } });
+    expect(updated!.digestSummary).toBe(d.digestSummary);
+  });
+
   it('returns 500 when a database error occurs', async () => {
     const d = await createDecision('th-followup-err', 'T3');
     vi.spyOn(prisma.triageDecision, 'update').mockRejectedValueOnce(new Error('DB error'));
