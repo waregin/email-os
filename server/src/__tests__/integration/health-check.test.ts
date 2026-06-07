@@ -146,6 +146,85 @@ describe('runHealthCheck', () => {
     expect(JSON.parse(newRule!.trigger)).toMatchObject({ type: 'sender_domain', domain: 'improved.com' });
   });
 
+  it('skips auto-version when a T4 ai_guess rule changes to non-T4 but neither suggestion nor rule provides a digestSummaryTemplate', async () => {
+    const rule = await prisma.triageRule.create({
+      data: {
+        userId,
+        trigger: JSON.stringify({ type: 'sender_domain', domain: 'newsletters.com' }),
+        action: 'digest',
+        priority: 'T4',
+        categoryLabel: 'Newsletters',
+        digestSummaryTemplate: '', // T4 rule has no meaningful template
+        source: 'ai_guess',
+      },
+    });
+    for (let i = 0; i < 5; i++) {
+      await prisma.triageDecision.create({
+        data: { userId, threadId: `t${i}`, ruleId: rule.id, priority: 'T4', digestSummary: 's', wasCorrect: i < 4 ? false : null },
+      });
+    }
+
+    // Suggestion proposes T2 but omits digestSummaryTemplate
+    const suggestion = { trigger: { type: 'sender_domain', domain: 'newsletters.com' }, priority: 'T2', reason: 'needs action' };
+    mockBatchesCreate.mockResolvedValue({ id: 'batch_1', processing_status: 'ended' });
+    mockBatchesRetrieve.mockResolvedValue({ processing_status: 'ended' });
+    mockBatchesResults.mockResolvedValue(
+      (async function* () {
+        yield {
+          custom_id: rule.id,
+          result: { type: 'succeeded', message: { content: [{ type: 'text', text: JSON.stringify(suggestion) }] } },
+        };
+      })(),
+    );
+
+    await runHealthCheck(userId);
+
+    // Rule should remain active and unchanged — auto-version was skipped
+    const unchanged = await prisma.triageRule.findUnique({ where: { id: rule.id } });
+    expect(unchanged!.isActive).toBe(true);
+    const children = await prisma.triageRule.findMany({ where: { parentId: rule.id } });
+    expect(children).toHaveLength(0);
+  });
+
+  it('clears categoryLabel in auto-versioned ai_guess rule when priority changes from T4 to non-T4', async () => {
+    const rule = await prisma.triageRule.create({
+      data: {
+        userId,
+        trigger: JSON.stringify({ type: 'sender_domain', domain: 'newsletters.com' }),
+        action: 'digest',
+        priority: 'T4',
+        categoryLabel: 'Newsletters',
+        digestSummaryTemplate: '{subject}',
+        source: 'ai_guess',
+      },
+    });
+    for (let i = 0; i < 5; i++) {
+      await prisma.triageDecision.create({
+        data: { userId, threadId: `t${i}`, ruleId: rule.id, priority: 'T4', digestSummary: 's', wasCorrect: i < 4 ? false : null },
+      });
+    }
+
+    const suggestion = makeSuggestion({ priority: 'T2', digestSummaryTemplate: 'Newsletter: {subject}' });
+    mockBatchesCreate.mockResolvedValue({ id: 'batch_1', processing_status: 'ended' });
+    mockBatchesRetrieve.mockResolvedValue({ processing_status: 'ended' });
+    mockBatchesResults.mockResolvedValue(
+      (async function* () {
+        yield {
+          custom_id: rule.id,
+          result: { type: 'succeeded', message: { content: [{ type: 'text', text: JSON.stringify(suggestion) }] } },
+        };
+      })(),
+    );
+
+    await runHealthCheck(userId);
+
+    const newRule = await prisma.triageRule.findFirst({ where: { userId, isActive: true, parentId: rule.id } });
+    expect(newRule).not.toBeNull();
+    expect(newRule!.priority).toBe('T2');
+    expect(newRule!.categoryLabel).toBeNull();
+    expect(newRule!.digestSummaryTemplate).toBe('Newsletter: {subject}');
+  });
+
   it('writes pendingSuggestion for an unhealthy taught rule without auto-versioning', async () => {
     const rule = await prisma.triageRule.create({
       data: { userId, trigger: JSON.stringify({ type: 'sender', sender: 'old@example.com' }), action: 'digest', priority: 'T2', digestSummaryTemplate: 'Old: {subject}', source: 'taught' },

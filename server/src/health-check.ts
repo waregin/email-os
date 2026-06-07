@@ -122,6 +122,18 @@ export async function runHealthCheck(userId: string): Promise<void> {
     }
 
     if (rule.source === 'ai_guess') {
+      const newPriority = String((suggestion as Record<string, unknown>).priority ?? rule.priority);
+      const isNewT4 = newPriority === 'T4';
+      const newTemplate = isNewT4
+        ? ''
+        : (String((suggestion as Record<string, unknown>).digestSummaryTemplate ?? '').trim()
+            || String(rule.digestSummaryTemplate ?? '').trim());
+
+      if (!isNewT4 && !newTemplate) {
+        console.error(`Health check: missing digestSummaryTemplate for non-T4 suggestion on rule ${rule.id}, skipping`);
+        continue;
+      }
+
       // Auto-version: apply the suggestion immediately without user review
       await prisma.triageRule.update({ where: { id: rule.id }, data: { isActive: false } });
       await prisma.triageRule.create({
@@ -132,11 +144,11 @@ export async function runHealthCheck(userId: string): Promise<void> {
           parentId: rule.id,
           trigger: JSON.stringify((suggestion as Record<string, unknown>).trigger ?? JSON.parse(rule.trigger)),
           action: 'digest',
-          priority: String((suggestion as Record<string, unknown>).priority ?? rule.priority),
-          categoryLabel: String((suggestion as Record<string, unknown>).categoryLabel ?? '') || rule.categoryLabel,
-          digestSummaryTemplate: String(
-            (suggestion as Record<string, unknown>).digestSummaryTemplate ?? rule.digestSummaryTemplate,
-          ),
+          priority: newPriority,
+          categoryLabel: isNewT4
+            ? String((suggestion as Record<string, unknown>).categoryLabel ?? '') || rule.categoryLabel
+            : null,
+          digestSummaryTemplate: newTemplate,
           notes: String((suggestion as Record<string, unknown>).notes ?? rule.notes ?? '') || null,
         },
       });

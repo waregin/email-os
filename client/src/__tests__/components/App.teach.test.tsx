@@ -50,6 +50,16 @@ RULE_PROPOSAL:
 {"trigger":{"type":"sender_domain","domain":"acme.com"},"action":"digest","priority":"T3","digestSummaryTemplate":"Invoice from {sender}"}
 Does that look right?`;
 
+const T4_PROPOSAL_RESPONSE = `Here is a T4 Browse rule.
+RULE_PROPOSAL:
+{"trigger":{"type":"sender_domain","domain":"newsletters.com"},"action":"digest","priority":"T4","categoryLabel":"Newsletters","digestSummaryTemplate":"{subject}"}
+Does that look right?`;
+
+const T4_NO_LABEL_RESPONSE = `Here is a T4 Browse rule without a label.
+RULE_PROPOSAL:
+{"trigger":{"type":"sender_domain","domain":"newsletters.com"},"action":"digest","priority":"T4","digestSummaryTemplate":"{subject}"}
+Does that look right?`;
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockApi.getStatus.mockResolvedValue({ authenticated: true });
@@ -241,6 +251,39 @@ Better?`;
     // The new proposal replaces the old one — rule-phase was reset so Confirm rule is actionable
     await waitFor(() => expect(screen.getByText('Updated: {subject}')).toBeInTheDocument());
     expect(screen.getAllByText('Confirm rule')).not.toHaveLength(0);
+  });
+
+  it('renders the category label in a T4 proposal card', async () => {
+    const user = userEvent.setup();
+    mockApi.teachMessage.mockResolvedValueOnce({ response: T4_PROPOSAL_RESPONSE });
+    render(<App />);
+    await openTeachPanel(user);
+
+    await waitFor(() => expect(screen.getByText('Newsletters')).toBeInTheDocument());
+  });
+
+  it('shows a missing-label warning in a T4 proposal card when categoryLabel is absent', async () => {
+    const user = userEvent.setup();
+    mockApi.teachMessage.mockResolvedValueOnce({ response: T4_NO_LABEL_RESPONSE });
+    render(<App />);
+    await openTeachPanel(user);
+
+    await waitFor(() => expect(screen.getByText('missing — required for T4')).toBeInTheDocument());
+  });
+
+  it('confirming a T4 rule passes categoryLabel to saveRule', async () => {
+    const user = userEvent.setup();
+    mockApi.teachMessage.mockResolvedValueOnce({ response: T4_PROPOSAL_RESPONSE });
+    mockApi.saveRule.mockResolvedValueOnce({ ruleId: 'r1', matchingThreads: [] });
+    render(<App />);
+    await openTeachPanel(user);
+    await waitFor(() => expect(screen.getByText('Confirm rule')).toBeInTheDocument());
+
+    await user.click(screen.getByText('Confirm rule'));
+
+    expect(mockApi.saveRule).toHaveBeenCalledWith(
+      expect.objectContaining({ priority: 'T4', categoryLabel: 'Newsletters' }),
+    );
   });
 
   it('shows an error and restores the thread list when applying the rule fails', async () => {

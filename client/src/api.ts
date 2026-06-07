@@ -120,7 +120,8 @@ export const api = {
     trigger: string;
     action: string;
     priority: string;
-    digestSummaryTemplate: string;
+    categoryLabel?: string;
+    digestSummaryTemplate?: string;
     notes?: string;
   }) =>
     request<{ ruleId: string; matchingThreads: MatchingThread[] }>('/api/agent/rules', {

@@ -122,6 +122,16 @@ describe('POST agent endpoints', () => {
     expect(JSON.parse(options.body)).toEqual({ rule });
   });
 
+  it('saveRule includes categoryLabel when provided and omits digestSummaryTemplate when absent', async () => {
+    mockFetch.mockReturnValueOnce(okJson({ ruleId: 'r1', matchingThreads: [] }));
+    const rule = { trigger: '{}', action: 'digest', priority: 'T4', categoryLabel: 'Newsletters' };
+    await api.saveRule(rule);
+    const [, options] = mockFetch.mock.calls[0]!;
+    const body = JSON.parse(options.body);
+    expect(body.rule.categoryLabel).toBe('Newsletters');
+    expect(body.rule.digestSummaryTemplate).toBeUndefined();
+  });
+
   it('applyRule posts threadIds to the apply path', async () => {
     mockFetch.mockReturnValueOnce(okJson({ ok: true, applied: 2 }));
     await api.applyRule('r1', ['t1', 't2']);

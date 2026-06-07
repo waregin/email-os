@@ -471,6 +471,7 @@ function TeachPanel({
         trigger,
         action: proposal.action,
         priority: proposal.priority,
+        categoryLabel: proposal.categoryLabel,
         digestSummaryTemplate: proposal.digestSummaryTemplate,
         notes: proposal.notes,
       });
@@ -560,6 +561,15 @@ function TeachPanel({
                         <p className="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Digest template</p>
                         <p className="text-xs text-gray-300 italic">{proposal.digestSummaryTemplate}</p>
                       </div>
+                      {proposal.priority === 'T4' && (
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Category</p>
+                          {proposal.categoryLabel
+                            ? <p className="text-xs text-gray-300">{proposal.categoryLabel}</p>
+                            : <p className="text-xs text-red-400">missing — required for T4</p>
+                          }
+                        </div>
+                      )}
                       {proposal.notes && (
                         <div>
                           <p className="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Notes</p>

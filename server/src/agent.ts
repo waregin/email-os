@@ -185,18 +185,27 @@ agentRouter.post('/rules', async (req, res) => {
         action: string;
         priority: string;
         categoryLabel?: string;
-        digestSummaryTemplate: string;
+        digestSummaryTemplate?: string;
         notes?: string;
       };
     };
 
     const normalizedTrigger = normalizeTrigger(rule.trigger);
+    const isT4 = rule.priority === 'T4';
+    // digestSummaryTemplate is '' for T4 (column is non-nullable; null requires a schema migration)
+    const template = isT4 ? '' : (rule.digestSummaryTemplate?.trim() ?? '');
+
+    if (!isT4 && !template) {
+      res.status(400).json({ error: 'digestSummaryTemplate is required for T1/T2/T3 rules' });
+      return;
+    }
+
     const ruleData = {
       trigger: normalizedTrigger,
       action: rule.action,
       priority: rule.priority,
-      categoryLabel: rule.categoryLabel ?? null,
-      digestSummaryTemplate: rule.digestSummaryTemplate,
+      categoryLabel: isT4 ? (rule.categoryLabel ?? null) : null,
+      digestSummaryTemplate: template,
       notes: rule.notes ?? null,
     };
 
@@ -433,6 +442,18 @@ agentRouter.post('/rules/:ruleId/suggestion/accept', async (req, res) => {
       return;
     }
 
+    const newPriority = String(suggestion.priority ?? rule.priority);
+    const isNewT4 = newPriority === 'T4';
+    const newTemplate = isNewT4
+      ? ''
+      : (String(suggestion.digestSummaryTemplate ?? '').trim()
+          || String(rule.digestSummaryTemplate ?? '').trim());
+
+    if (!isNewT4 && !newTemplate) {
+      res.status(400).json({ error: 'digestSummaryTemplate is required for T1/T2/T3 rules' });
+      return;
+    }
+
     await prisma.triageRule.update({ where: { id: rule.id }, data: { isActive: false } });
     const newRule = await prisma.triageRule.create({
       data: {
@@ -442,9 +463,9 @@ agentRouter.post('/rules/:ruleId/suggestion/accept', async (req, res) => {
         parentId: rule.id,
         trigger: JSON.stringify(suggestion.trigger ?? JSON.parse(rule.trigger)),
         action: 'digest',
-        priority: String(suggestion.priority ?? rule.priority),
-        categoryLabel: String(suggestion.categoryLabel ?? '') || rule.categoryLabel,
-        digestSummaryTemplate: String(suggestion.digestSummaryTemplate ?? rule.digestSummaryTemplate),
+        priority: newPriority,
+        categoryLabel: isNewT4 ? (String(suggestion.categoryLabel ?? '') || rule.categoryLabel) : null,
+        digestSummaryTemplate: newTemplate,
         notes: String(suggestion.notes ?? rule.notes ?? '') || null,
       },
     });
