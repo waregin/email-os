@@ -74,7 +74,7 @@ Allowed fields — no others will be saved:
   list_id               →  type, listId
   address               →  type, toAddress
 
-When modifying an existing rule, always include "existingRuleId" so the system updates it instead of creating a duplicate.
+Before proposing a new rule, review the existing rules listed above. If an existing rule could be modified to handle this case, include its id as "existingRuleId" and update it rather than creating a duplicate. Never propose a rule whose trigger would match a strict subset of threads already caught by a confirmed rule at the same or higher priority.
 After the RULE_PROPOSAL block you may continue with a brief explanation, but the JSON block must be valid and complete.`;
 
 const STARTER_MESSAGE: Anthropic.MessageParam = { role: 'user', content: 'Hi' };
@@ -127,7 +127,7 @@ agentRouter.post('/teach', async (req, res) => {
     const completion = await anthropic.messages.create({
       model,
       max_tokens: 1024,
-      system: systemPrompt,
+      system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       messages: apiMessages,
     });
 
@@ -207,7 +207,14 @@ agentRouter.post('/rules', async (req, res) => {
         res.status(404).json({ error: 'Rule not found' });
         return;
       }
-      savedRule = await prisma.triageRule.update({ where: { id: rule.existingRuleId }, data: ruleData });
+      // Audit trail: deactivate the old version and create a new one pointing back to it
+      // rather than mutating in place, so the rule's history is preserved.
+      // A human went through /teach to confirm this edit, so the new version is always
+      // 'taught' — even when the predecessor was an ai_guess (which also bumps its priority rank).
+      await prisma.triageRule.update({ where: { id: existing.id }, data: { isActive: false } });
+      savedRule = await prisma.triageRule.create({
+        data: { userId, source: 'taught', parentId: existing.id, ...ruleData },
+      });
     } else {
       savedRule = await prisma.triageRule.create({ data: { userId, source: 'taught', ...ruleData } });
     }

@@ -83,6 +83,14 @@ const THREAD_CONTEXT = {
   threadId: 'th-invoice',
 };
 
+// /teach sends `system` as an array of cache-controlled text blocks; pull the text out.
+function teachSystemText(callIndex = 0): string {
+  const call = mockCreate.mock.calls[callIndex]![0] as {
+    system: Array<{ type: string; text: string }>;
+  };
+  return call.system.map((b) => b.text).join('\n');
+}
+
 describe('POST /api/agent/teach', () => {
   it('returns 401 without auth', async () => {
     const res = await request(app).post('/api/agent/teach').send({ messages: [], threadContext: THREAD_CONTEXT });
@@ -112,9 +120,9 @@ describe('POST /api/agent/teach', () => {
       threadContext: THREAD_CONTEXT,
     });
 
-    const call = mockCreate.mock.calls[0]![0] as { system: string };
-    expect(call.system).toContain('Your Invoice');
-    expect(call.system).toContain('billing@acme.com');
+    const system = teachSystemText();
+    expect(system).toContain('Your Invoice');
+    expect(system).toContain('billing@acme.com');
   });
 
   it('injects existing rules into the system prompt', async () => {
@@ -136,8 +144,7 @@ describe('POST /api/agent/teach', () => {
       threadContext: THREAD_CONTEXT,
     });
 
-    const call = mockCreate.mock.calls[0]![0] as { system: string };
-    expect(call.system).toContain('acme.com');
+    expect(teachSystemText()).toContain('acme.com');
   });
 
   it('does not inject inactive rules into the system prompt', async () => {
@@ -170,9 +177,9 @@ describe('POST /api/agent/teach', () => {
       threadContext: THREAD_CONTEXT,
     });
 
-    const call = mockCreate.mock.calls[0]![0] as { system: string };
-    expect(call.system).toContain('active.com');
-    expect(call.system).not.toContain('inactive.com');
+    const system = teachSystemText();
+    expect(system).toContain('active.com');
+    expect(system).not.toContain('inactive.com');
   });
 
   it('returns 500 when Anthropic API throws', async () => {
@@ -206,8 +213,7 @@ describe('POST /api/agent/teach', () => {
       threadContext: THREAD_CONTEXT,
       userContext: 'This user runs a startup inbox.',
     });
-    const call = mockCreate.mock.calls[0]![0] as { system: string };
-    expect(call.system).toContain('This user runs a startup inbox.');
+    expect(teachSystemText()).toContain('This user runs a startup inbox.');
   });
 
   it('includes rule notes in the injected existing-rules list', async () => {
@@ -227,8 +233,21 @@ describe('POST /api/agent/teach', () => {
       messages: [{ role: 'user', content: 'help' }],
       threadContext: THREAD_CONTEXT,
     });
-    const call = mockCreate.mock.calls[0]![0] as { system: string };
-    expect(call.system).toContain('VIP sender — never delay');
+    expect(teachSystemText()).toContain('VIP sender — never delay');
+  });
+
+  it('sends the system prompt as a cache-controlled block', async () => {
+    mockCreate.mockResolvedValueOnce({ content: [{ type: 'text', text: 'ok' }] });
+    await agent.post('/api/agent/teach').send({
+      messages: [{ role: 'user', content: 'help' }],
+      threadContext: THREAD_CONTEXT,
+    });
+    const call = mockCreate.mock.calls[0]![0] as {
+      system: Array<{ type: string; text: string; cache_control?: { type: string } }>;
+    };
+    expect(Array.isArray(call.system)).toBe(true);
+    expect(call.system[0]!.type).toBe('text');
+    expect(call.system[0]!.cache_control).toEqual({ type: 'ephemeral' });
   });
 });
 
@@ -254,9 +273,12 @@ describe('POST /api/agent/rules', () => {
     const rule = await prisma.triageRule.findUnique({ where: { id: res.body.ruleId } });
     expect(rule).not.toBeNull();
     expect(rule!.priority).toBe('T3');
+    expect(rule!.source).toBe('taught');
+    expect(rule!.isActive).toBe(true);
+    expect(rule!.parentId).toBeNull();
   });
 
-  it('updates existing rule when existingRuleId is provided', async () => {
+  it('creates a new active rule version and deactivates the old one when existingRuleId is provided', async () => {
     const existing = await prisma.triageRule.create({
       data: {
         userId,
@@ -264,11 +286,11 @@ describe('POST /api/agent/rules', () => {
         action: 'digest',
         priority: 'T4',
         digestSummaryTemplate: 'old template',
-        source: 'taught',
+        source: 'ai_guess',
       },
     });
 
-    await agent.post('/api/agent/rules').send({
+    const res = await agent.post('/api/agent/rules').send({
       rule: {
         existingRuleId: existing.id,
         trigger: { type: 'sender_domain', domain: 'new.com' },
@@ -278,9 +300,26 @@ describe('POST /api/agent/rules', () => {
       },
     });
 
-    const updated = await prisma.triageRule.findUnique({ where: { id: existing.id } });
-    expect(updated!.priority).toBe('T2');
-    expect(JSON.parse(updated!.trigger).domain).toBe('new.com');
+    // Old version is deactivated but its content is left untouched (audit trail preserved)
+    const old = await prisma.triageRule.findUnique({ where: { id: existing.id } });
+    expect(old!.isActive).toBe(false);
+    expect(old!.priority).toBe('T4');
+    expect(old!.source).toBe('ai_guess'); // predecessor's source is left intact
+    expect(JSON.parse(old!.trigger).domain).toBe('old.com');
+
+    // A brand-new active row carries the changes and points back at its predecessor
+    const saved = await prisma.triageRule.findUnique({ where: { id: res.body.ruleId } });
+    expect(saved!.id).not.toBe(existing.id);
+    expect(saved!.isActive).toBe(true);
+    expect(saved!.parentId).toBe(existing.id);
+    expect(saved!.source).toBe('taught'); // human-confirmed edit promotes ai_guess → taught
+    expect(saved!.priority).toBe('T2');
+    expect(JSON.parse(saved!.trigger).domain).toBe('new.com');
+
+    // Only one active version remains for this lineage
+    const activeForUser = await prisma.triageRule.findMany({ where: { userId, isActive: true } });
+    expect(activeForUser).toHaveLength(1);
+    expect(activeForUser[0]!.id).toBe(saved!.id);
   });
 
   it('saves rule with raw trigger string when trigger JSON is invalid (normalizeTrigger catch)', async () => {
