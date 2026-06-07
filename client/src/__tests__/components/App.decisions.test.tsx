@@ -18,6 +18,7 @@ vi.mock('../../api', () => ({
     teachMessage: vi.fn(),
     saveRule: vi.fn(),
     applyRule: vi.fn(),
+    getRulesWithSuggestions: vi.fn(),
   },
 }));
 
@@ -51,6 +52,7 @@ beforeEach(() => {
   mockApi.getUnreadCount.mockResolvedValue({ count: 0 });
   mockApi.getThread.mockResolvedValue({ id: 'x', messages: [] });
   mockApi.getDecisions.mockResolvedValue(EMPTY);
+  mockApi.getRulesWithSuggestions.mockResolvedValue([]);
   mockApi.confirmDecision.mockResolvedValue({ ok: true });
   mockApi.doneDecision.mockResolvedValue({ ok: true });
   mockApi.followupDecision.mockResolvedValue({ ok: true });

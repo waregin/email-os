@@ -8,6 +8,7 @@ vi.mock('../../api', () => ({
     getUnreadCount: vi.fn(),
     getDecisions: vi.fn(),
     getThread: vi.fn(),
+    getRulesWithSuggestions: vi.fn(),
   },
 }));
 
@@ -21,6 +22,7 @@ beforeEach(() => {
   // Sensible defaults; individual tests override getStatus
   mockApi.getUnreadCount.mockResolvedValue({ count: 0 });
   mockApi.getDecisions.mockResolvedValue(EMPTY_DECISIONS);
+  mockApi.getRulesWithSuggestions.mockResolvedValue([]);
 });
 
 afterEach(() => {

@@ -14,6 +14,7 @@ vi.mock('../../api', () => ({
     saveRule: vi.fn(),
     applyRule: vi.fn(),
     misclassifiedDecision: vi.fn(),
+    getRulesWithSuggestions: vi.fn(),
   },
 }));
 
@@ -50,6 +51,7 @@ beforeEach(() => {
   mockApi.getStatus.mockResolvedValue({ authenticated: true });
   mockApi.getUnreadCount.mockResolvedValue({ count: 0 });
   mockApi.getDecisions.mockResolvedValue(EMPTY);
+  mockApi.getRulesWithSuggestions.mockResolvedValue([]);
   mockApi.getThread.mockResolvedValue({ id: 'x', messages: [] });
   mockApi.misclassifiedDecision.mockResolvedValue({ ok: true, threadId: 't1' });
 });

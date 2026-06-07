@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from './api';
-import type { Thread, DecisionWithThread, MatchingThread } from './api';
+import type { Thread, DecisionWithThread, MatchingThread, RuleWithSuggestion } from './api';
 import { DigestPanel } from './components/DigestPanel';
+import { RuleHealthPanel } from './components/RuleHealthPanel';
 import { dedupeDecisions, sortTierItems } from './utils/decisions';
 import type { DecisionsState } from './utils/decisions';
 import { parseProposal, describeTrigger } from './utils/rules';
@@ -103,17 +104,28 @@ function MainApp() {
   const [decisions, setDecisions] = useState<DecisionsState>({ T1: [], T2: [], T3: [], T4: [], T5: [] });
   const [openTier, setOpenTier] = useState<'T1' | 'T2' | 'T3' | 'T4' | 'T5' | null>('T1');
   const [refreshing, setRefreshing] = useState(false);
+  const [suggestions, setSuggestions] = useState<RuleWithSuggestion[]>([]);
 
   const loadDecisions = useCallback(() => {
     api.getDecisions().then((d) => setDecisions(dedupeDecisions(d))).catch(() => {});
   }, []);
 
+  const loadSuggestions = useCallback(() => {
+    api.getRulesWithSuggestions().then(setSuggestions).catch(() => {});
+  }, []);
+
   useEffect(() => { loadDecisions(); }, [loadDecisions]);
+  useEffect(() => { loadSuggestions(); }, [loadSuggestions]);
 
   useEffect(() => {
     const id = setInterval(loadDecisions, 60_000);
     return () => clearInterval(id);
   }, [loadDecisions]);
+
+  useEffect(() => {
+    const id = setInterval(loadSuggestions, 60_000);
+    return () => clearInterval(id);
+  }, [loadSuggestions]);
 
   function removeDecision(decisionId: string) {
     setDecisions((prev) => {
@@ -214,6 +226,16 @@ function MainApp() {
 
   const handleTeachClose = useCallback(() => setTeachContext(null), []);
 
+  const handleAcceptSuggestion = useCallback((ruleId: string) => {
+    setSuggestions((prev) => prev.filter((s) => s.id !== ruleId));
+    api.acceptSuggestion(ruleId).catch(() => loadSuggestions());
+  }, [loadSuggestions]);
+
+  const handleDismissSuggestion = useCallback((ruleId: string) => {
+    setSuggestions((prev) => prev.filter((s) => s.id !== ruleId));
+    api.dismissSuggestion(ruleId).catch(() => loadSuggestions());
+  }, [loadSuggestions]);
+
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     setError(null);
@@ -253,6 +275,12 @@ function MainApp() {
             </svg>
           </button>
         </header>
+
+        <RuleHealthPanel
+          suggestions={suggestions}
+          onAccept={handleAcceptSuggestion}
+          onDismiss={handleDismissSuggestion}
+        />
 
         {/* Digest */}
         <section className="space-y-3">

@@ -141,4 +141,26 @@ describe('POST agent endpoints', () => {
     expect(url).toBe('/api/agent/teach');
     expect(JSON.parse(options.body)).toEqual(payload);
   });
+
+  it('getRulesWithSuggestions calls GET /api/agent/rules/with-suggestions', async () => {
+    mockFetch.mockReturnValueOnce(okJson([]));
+    await api.getRulesWithSuggestions();
+    expect(mockFetch.mock.calls[0]![0]).toBe('/api/agent/rules/with-suggestions');
+  });
+
+  it('acceptSuggestion posts to the accept path', async () => {
+    mockFetch.mockReturnValueOnce(okJson({ ok: true, ruleId: 'r2' }));
+    await api.acceptSuggestion('r1');
+    const [url, options] = mockFetch.mock.calls[0]!;
+    expect(url).toBe('/api/agent/rules/r1/suggestion/accept');
+    expect(options.method).toBe('POST');
+  });
+
+  it('dismissSuggestion posts to the dismiss path', async () => {
+    mockFetch.mockReturnValueOnce(okJson({ ok: true }));
+    await api.dismissSuggestion('r1');
+    const [url, options] = mockFetch.mock.calls[0]!;
+    expect(url).toBe('/api/agent/rules/r1/suggestion/dismiss');
+    expect(options.method).toBe('POST');
+  });
 });

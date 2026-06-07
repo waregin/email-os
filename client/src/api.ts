@@ -34,6 +34,17 @@ export interface MatchingThread {
   snippet: string;
 }
 
+export interface RuleWithSuggestion {
+  id: string;
+  trigger: string;
+  priority: string;
+  categoryLabel: string | null;
+  digestSummaryTemplate: string;
+  notes: string | null;
+  source: string;
+  pendingSuggestion: string;
+}
+
 export interface DecisionWithThread {
   decisionId: string;
   threadId: string;
@@ -132,4 +143,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  getRulesWithSuggestions: () =>
+    request<RuleWithSuggestion[]>('/api/agent/rules/with-suggestions'),
+
+  acceptSuggestion: (ruleId: string) =>
+    request<{ ok: boolean; ruleId: string }>(`/api/agent/rules/${ruleId}/suggestion/accept`, { method: 'POST' }),
+
+  dismissSuggestion: (ruleId: string) =>
+    request<{ ok: boolean }>(`/api/agent/rules/${ruleId}/suggestion/dismiss`, { method: 'POST' }),
 };

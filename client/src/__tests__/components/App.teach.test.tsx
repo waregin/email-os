@@ -14,6 +14,7 @@ vi.mock('../../api', () => ({
     saveRule: vi.fn(),
     applyRule: vi.fn(),
     misclassifiedDecision: vi.fn(),
+    getRulesWithSuggestions: vi.fn(),
   },
 }));
 
@@ -55,6 +56,7 @@ beforeEach(() => {
   mockApi.getUnreadCount.mockResolvedValue({ count: 0 });
   mockApi.getDecisions.mockResolvedValue({ ...EMPTY, T5: [T5_DECISION] });
   mockApi.getThread.mockResolvedValue({ id: 't1', messages: [] });
+  mockApi.getRulesWithSuggestions.mockResolvedValue([]);
   mockApi.saveRule.mockResolvedValue({ ruleId: 'r1', matchingThreads: [] });
   mockApi.applyRule.mockResolvedValue({ ok: true, applied: 1 });
   mockApi.misclassifiedDecision.mockResolvedValue({ ok: true, threadId: 't1' });
