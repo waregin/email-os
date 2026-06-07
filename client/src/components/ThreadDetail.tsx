@@ -25,7 +25,7 @@ function HtmlFrame({ html }: { html: string }) {
     <iframe
       ref={iframeRef}
       srcDoc={srcDoc}
-      sandbox="allow-scripts allow-popups"
+      sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
       className="w-full border-0 block"
       style={{ minHeight: '100px' }}
       title="email-body"

@@ -527,7 +527,7 @@ When a user clicks Followup on a T3/T4 item, open a small inline text input so t
 | ~~7~~ | ~~Phase 2: `classifier.ts` (batched) + unit tests~~ ✓ |
 | ~~8~~ | ~~Phase 3: Triage pass AI fallback + T5 decisions + integration tests~~ ✓ |
 | ~~9~~ | ~~Phase 4: Prompt caching + conflict avoidance + audit trail in `/rules` endpoint~~ ✓ |
-| 10 | Fix: links open in new tab (`prepareHtml`) |
+| ~~10~~ | ~~Fix: clicked links render broken — add `allow-popups-to-escape-sandbox` to email iframe so new tabs escape the sandbox~~ ✓ |
 | 11 | Fix: favicon static image |
 | 12 | Feature: in-page refresh button |
 | 13 | Feature: followup note |

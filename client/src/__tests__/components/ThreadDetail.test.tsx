@@ -128,6 +128,18 @@ describe('ThreadDetail message expansion interaction', () => {
     });
   });
 
+  it('lets target=_blank links escape the iframe sandbox so they open normally', async () => {
+    mockGetThread.mockResolvedValueOnce({
+      id: 't1',
+      messages: [makeMessage({ id: 'm1', isUnread: true, htmlBody: '<a href="https://example.com">link</a>' })],
+    });
+    const { container } = render(<ThreadDetail threadId="t1" />);
+    await waitFor(() => expect(container.querySelector('iframe')).toBeInTheDocument());
+    const sandbox = container.querySelector('iframe')!.getAttribute('sandbox') ?? '';
+    // Without this token, popups opened from the sandbox inherit its restrictions and render broken
+    expect(sandbox.split(' ')).toContain('allow-popups-to-escape-sandbox');
+  });
+
   it('updates iframe height when the iframe posts an iframe-height message', async () => {
     mockGetThread.mockResolvedValueOnce({
       id: 't1',
