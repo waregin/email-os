@@ -106,7 +106,7 @@ function MainApp() {
   const [error, setError] = useState<string | null>(null);
   const [nextPageToken, setNextPageToken] = useState<string | undefined>();
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [teachThread, setTeachThread] = useState<Thread | null>(null);
+  const [teachContext, setTeachContext] = useState<{ thread: Thread; correctTier?: string; decisionId?: string } | null>(null);
   const [decisions, setDecisions] = useState<DecisionsState>({ T1: [], T2: [], T3: [], T4: [] });
   const [openTier, setOpenTier] = useState<'T1' | 'T2' | 'T3' | 'T4' | null>('T1');
   const [refreshing, setRefreshing] = useState(false);
@@ -155,21 +155,6 @@ function MainApp() {
       }
       return prev;
     });
-  }
-
-  function prependThreadIfMissing(detail: import('./api').ThreadDetail) {
-    const lastMsg = detail.messages[detail.messages.length - 1];
-    if (!lastMsg) return;
-    const tempThread: Thread = {
-      id: detail.id,
-      snippet: lastMsg.snippet,
-      subject: lastMsg.subject,
-      sender: lastMsg.sender,
-      date: lastMsg.date,
-      isUnread: lastMsg.isUnread,
-      unreadCount: detail.messages.filter((m) => m.isUnread).length,
-    };
-    setThreads((prev) => (prev.some((t) => t.id === detail.id) ? prev : [tempThread, ...prev]));
   }
 
   function handleConfirm(decisionId: string) {
@@ -240,18 +225,23 @@ function MainApp() {
     api.confirmAll(decisionIds, tier).catch(() => {});
   }
 
-  async function handleMisclassified(decisionId: string, threadId: string) {
-    removeDecision(decisionId);
-    api.misclassifiedDecision(decisionId).catch(() => {});
-    if (!threads.some((t) => t.id === threadId)) {
-      try {
-        const detail = await api.getThread(threadId);
-        prependThreadIfMissing(detail);
-      } catch {}
-    }
-  }
+  const handleOpenTeach = useCallback(
+    (item: DecisionWithThread, opts: { correctTier: string }) => {
+      const thread: Thread = {
+        id: item.threadId,
+        subject: item.thread.subject,
+        sender: item.thread.sender,
+        date: item.thread.date,
+        snippet: item.thread.snippet,
+        isUnread: item.thread.unreadCount > 0,
+        unreadCount: item.thread.unreadCount,
+      };
+      setTeachContext({ thread, correctTier: opts.correctTier, decisionId: item.decisionId });
+    },
+    [],
+  );
 
-  const handleTeachClose = useCallback(() => setTeachThread(null), []);
+  const handleTeachClose = useCallback(() => setTeachContext(null), []);
   const handleDecisionsRefresh = useCallback(() => {
     api.getDecisions().then((d) => setDecisions(dedupeDecisions(d))).catch(() => {});
   }, []);
@@ -322,7 +312,7 @@ function MainApp() {
                 onConfirm={handleConfirm}
                 onDone={handleDone}
                 onFollowup={handleFollowup}
-                onMisclassified={handleMisclassified}
+                onOpenTeach={handleOpenTeach}
                 onConfirmAll={handleConfirmAll}
                 onViewThread={() => {}}
               />
@@ -346,7 +336,7 @@ function MainApp() {
                   thread={thread}
                   expanded={expandedId === thread.id}
                   onToggle={() => setExpandedId(expandedId === thread.id ? null : thread.id)}
-                  onTeach={(t) => setTeachThread(t)}
+                  onTeach={(t) => setTeachContext({ thread: t })}
                 />
               ))}
               {nextPageToken && (
@@ -366,7 +356,9 @@ function MainApp() {
       </div>
 
       <TeachPanel
-        thread={teachThread}
+        thread={teachContext?.thread ?? null}
+        correctTier={teachContext?.correctTier}
+        decisionId={teachContext?.decisionId}
         onClose={handleTeachClose}
         onDecisionsRefresh={handleDecisionsRefresh}
       />
@@ -390,13 +382,22 @@ type RulePhase = 'pending' | 'saving' | 'threads' | 'applying' | 'done' | 'no-ma
 
 function TeachPanel({
   thread,
+  correctTier,
+  decisionId,
   onClose,
   onDecisionsRefresh,
 }: {
   thread: Thread | null;
+  correctTier?: string;
+  decisionId?: string;
   onClose: () => void;
   onDecisionsRefresh: () => void;
 }) {
+  // When the panel was opened from a Wrong/Teach action the user has already
+  // chosen the tier; tell the agent to skip questions and lead with a hypothesis.
+  const userContext = correctTier
+    ? `The user has indicated this thread belongs in ${correctTier}. Skip clarifying questions and immediately propose a rule with a brief explanation.`
+    : undefined;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -430,11 +431,12 @@ function TeachPanel({
     api.teachMessage({
       messages: [],
       threadContext: { subject: thread.subject, sender: thread.sender, snippet: thread.snippet, date: thread.date, threadId: thread.id },
+      userContext,
     })
       .then(({ response }) => setMessages([{ role: 'assistant', content: response }]))
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [thread]);
+  }, [thread, userContext]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -458,6 +460,7 @@ function TeachPanel({
       const { response } = await api.teachMessage({
         messages: next,
         threadContext: { subject: thread.subject, sender: thread.sender, snippet: thread.snippet, date: thread.date, threadId: thread.id },
+        userContext,
       });
       setMessages([...next, { role: 'assistant', content: response }]);
       if (parseProposal(response).proposal) {
@@ -491,6 +494,9 @@ function TeachPanel({
       ? proposal.trigger
       : JSON.stringify(proposal.trigger);
     try {
+      // When re-teaching a misclassified item, archive the old decision first so
+      // the thread is free for the new rule to match and re-classify on apply.
+      if (decisionId) await api.misclassifiedDecision(decisionId);
       const { ruleId, matchingThreads: threads } = await api.saveRule({
         existingRuleId: typeof proposal.existingRuleId === 'string' ? proposal.existingRuleId : undefined,
         trigger,

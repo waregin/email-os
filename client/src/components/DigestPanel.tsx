@@ -14,10 +14,12 @@ interface DigestPanelProps {
   onConfirm: (decisionId: string) => void;
   onDone: (decisionId: string) => void;
   onFollowup: (decisionId: string, note?: string) => void;
-  onMisclassified: (decisionId: string, threadId: string) => void;
+  onOpenTeach: (item: DecisionWithThread, opts: { correctTier: string }) => void;
   onConfirmAll: (decisionIds: string[], tier: string) => void;
   onViewThread: (threadId: string) => void;
 }
+
+const TIERS = ['T1', 'T2', 'T3', 'T4'] as const;
 
 function DigestItemRow({
   item,
@@ -28,7 +30,7 @@ function DigestItemRow({
   onDone,
   onConfirm,
   onFollowup,
-  onMisclassified,
+  onOpenTeach,
 }: {
   item: DecisionWithThread;
   expanded: boolean;
@@ -38,12 +40,13 @@ function DigestItemRow({
   onDone: (decisionId: string) => void;
   onConfirm: (decisionId: string) => void;
   onFollowup: (decisionId: string, note?: string) => void;
-  onMisclassified: (decisionId: string, threadId: string) => void;
+  onOpenTeach: (item: DecisionWithThread, opts: { correctTier: string }) => void;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const prevExpanded = useRef(expanded);
   const [followupMode, setFollowupMode] = useState(false);
   const [note, setNote] = useState('');
+  const [tierPickerOpen, setTierPickerOpen] = useState(false);
 
   useEffect(() => {
     if (prevExpanded.current === expanded) return;
@@ -61,6 +64,11 @@ function DigestItemRow({
   function confirmFollowup() {
     onFollowup(item.decisionId, note);
     setFollowupMode(false);
+  }
+
+  function pickTier(correctTier: string) {
+    onOpenTeach(item, { correctTier });
+    setTierPickerOpen(false);
   }
 
   return (
@@ -131,7 +139,7 @@ function DigestItemRow({
                   Done
                 </button>
                 <button
-                  onClick={() => onMisclassified(item.decisionId, item.threadId)}
+                  onClick={() => setTierPickerOpen(true)}
                   className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-red-400 hover:border-red-700 transition-colors"
                 >
                   Wrong
@@ -153,7 +161,7 @@ function DigestItemRow({
                 Followup
               </button>
               <button
-                onClick={() => onMisclassified(item.decisionId, item.threadId)}
+                onClick={() => setTierPickerOpen(true)}
                 className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-red-400 hover:border-red-700 transition-colors"
               >
                 Wrong
@@ -163,6 +171,40 @@ function DigestItemRow({
         </div>
       </div>
       </div>
+      {tierPickerOpen && (
+        <div
+          className="flex items-center gap-2 px-4 py-2 border-b border-gray-800/60 bg-gray-900/30"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="text-xs text-gray-500 shrink-0">Correct tier:</span>
+          {TIERS.map((t) => {
+            const isCurrent = t === item.priority;
+            return (
+              <button
+                key={t}
+                onClick={() => pickTier(t)}
+                disabled={isCurrent}
+                aria-label={isCurrent ? `${t} (current — incorrect)` : `Move to ${t}`}
+                title={isCurrent ? 'Current tier (marked incorrect)' : undefined}
+                className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                  isCurrent
+                    ? 'border-red-700/50 text-red-400/60 line-through cursor-not-allowed'
+                    : 'border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500'
+                }`}
+              >
+                {t}
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setTierPickerOpen(false)}
+            aria-label="Cancel tier picker"
+            className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors shrink-0 ml-auto"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {followupMode && (
         <div
           className="flex items-center gap-2 px-4 py-2 border-b border-gray-800/60 bg-gray-900/30"
@@ -215,7 +257,7 @@ function DigestGroupPanel({
   onDone,
   onConfirm,
   onFollowup,
-  onMisclassified,
+  onOpenTeach,
   onConfirmAll,
 }: {
   groupLabel: string;
@@ -228,7 +270,7 @@ function DigestGroupPanel({
   onDone: (id: string) => void;
   onConfirm: (id: string) => void;
   onFollowup: (id: string, note?: string) => void;
-  onMisclassified: (id: string, threadId: string) => void;
+  onOpenTeach: (item: DecisionWithThread, opts: { correctTier: string }) => void;
   onConfirmAll: (items: DecisionWithThread[]) => void;
 }) {
   const groupRef = useRef<HTMLDivElement>(null);
@@ -271,7 +313,7 @@ function DigestGroupPanel({
                 onDone={onDone}
                 onConfirm={onConfirm}
                 onFollowup={onFollowup}
-                onMisclassified={onMisclassified}
+                onOpenTeach={onOpenTeach}
               />
             ))}
           </div>
@@ -299,7 +341,7 @@ export function DigestPanel({
   onConfirm,
   onDone,
   onFollowup,
-  onMisclassified,
+  onOpenTeach,
   onConfirmAll,
   onViewThread,
 }: DigestPanelProps) {
@@ -377,11 +419,6 @@ export function DigestPanel({
     onFollowup(decisionId, note);
   }
 
-  function handleMisclassified(decisionId: string, threadId: string) {
-    removeFromSnapshot(decisionId);
-    onMisclassified(decisionId, threadId);
-  }
-
   function handleConfirmAll() {
     if (isT12) {
       const unconfirmedIds = snapshotItems
@@ -445,7 +482,7 @@ export function DigestPanel({
                   onDone={handleDone}
                   onConfirm={handleConfirm}
                   onFollowup={handleFollowup}
-                  onMisclassified={handleMisclassified}
+                  onOpenTeach={onOpenTeach}
                   onConfirmAll={handleGroupConfirmAll}
                 />
               ))}
@@ -468,7 +505,7 @@ export function DigestPanel({
                     onDone={handleDone}
                     onConfirm={handleConfirm}
                     onFollowup={handleFollowup}
-                    onMisclassified={handleMisclassified}
+                    onOpenTeach={onOpenTeach}
                   />
                 ))}
               </div>

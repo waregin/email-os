@@ -37,7 +37,7 @@ function defaultProps() {
     onConfirm: vi.fn(),
     onDone: vi.fn(),
     onFollowup: vi.fn(),
-    onMisclassified: vi.fn(),
+    onOpenTeach: vi.fn(),
     onConfirmAll: vi.fn(),
     onViewThread: vi.fn(),
   };
@@ -229,13 +229,43 @@ describe('DigestPanel actions', () => {
     expect(props.onFollowup).not.toHaveBeenCalled();
   });
 
-  it('clicking Wrong calls onMisclassified with decisionId and threadId', async () => {
+  it('clicking Wrong reveals a tier picker with the current tier marked and disabled', async () => {
     const user = userEvent.setup();
     const props = defaultProps();
     const items = [makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T3' })];
     render(<DigestPanel tier="T3" items={items} isOpen={true} {...props} />);
     await user.click(screen.getByText('Wrong'));
-    expect(props.onMisclassified).toHaveBeenCalledWith('d1', 't1');
+
+    // Current tier (T3) is marked incorrect and not selectable
+    const current = screen.getByLabelText('T3 (current — incorrect)');
+    expect(current).toBeDisabled();
+    // Other tiers are offered
+    expect(screen.getByLabelText('Move to T1')).toBeInTheDocument();
+    expect(props.onOpenTeach).not.toHaveBeenCalled();
+  });
+
+  it('selecting a tier in the picker calls onOpenTeach with that tier', async () => {
+    const user = userEvent.setup();
+    const props = defaultProps();
+    const items = [makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T3' })];
+    render(<DigestPanel tier="T3" items={items} isOpen={true} {...props} />);
+    await user.click(screen.getByText('Wrong'));
+    await user.click(screen.getByLabelText('Move to T1'));
+    expect(props.onOpenTeach).toHaveBeenCalledWith(
+      expect.objectContaining({ decisionId: 'd1', threadId: 't1' }),
+      { correctTier: 'T1' },
+    );
+  });
+
+  it('cancelling the tier picker hides it without calling onOpenTeach', async () => {
+    const user = userEvent.setup();
+    const props = defaultProps();
+    const items = [makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T3' })];
+    render(<DigestPanel tier="T3" items={items} isOpen={true} {...props} />);
+    await user.click(screen.getByText('Wrong'));
+    await user.click(screen.getByLabelText('Cancel tier picker'));
+    expect(screen.queryByLabelText('Move to T1')).not.toBeInTheDocument();
+    expect(props.onOpenTeach).not.toHaveBeenCalled();
   });
 });
 

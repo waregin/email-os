@@ -16,6 +16,9 @@ vi.mock('../../api', () => ({
     followupDecision: vi.fn(),
     misclassifiedDecision: vi.fn(),
     confirmAll: vi.fn(),
+    teachMessage: vi.fn(),
+    saveRule: vi.fn(),
+    applyRule: vi.fn(),
   },
 }));
 
@@ -55,6 +58,9 @@ beforeEach(() => {
   mockApi.followupDecision.mockResolvedValue({ ok: true });
   mockApi.misclassifiedDecision.mockResolvedValue({ ok: true, threadId: 't1' });
   mockApi.confirmAll.mockResolvedValue({ ok: true, processed: 1 });
+  mockApi.teachMessage.mockResolvedValue({ response: 'ok' });
+  mockApi.saveRule.mockResolvedValue({ ruleId: 'r1', matchingThreads: [] });
+  mockApi.applyRule.mockResolvedValue({ ok: true, applied: 0 });
 });
 
 describe('MainApp decision handlers', () => {
@@ -89,27 +95,51 @@ describe('MainApp decision handlers', () => {
     await waitFor(() => expect(screen.queryByText('Pay the bill')).not.toBeInTheDocument());
   });
 
-  it('marking a T1 item Wrong calls api.misclassifiedDecision and fetches the thread back into the inbox', async () => {
+  it('marking a T1 item Wrong and picking a tier opens teach with the correct-tier userContext', async () => {
+    const user = userEvent.setup();
+    mockApi.getDecisions.mockResolvedValue({
+      ...EMPTY,
+      T1: [decision({ decisionId: 'd1', threadId: 'tX', priority: 'T1', digestSummary: 'Wrongly classified', thread: { subject: 'Mis-tiered', sender: 'Alice <a@b.com>', date: '2024-01-01T00:00:00Z', snippet: 'snip', unreadCount: 0, messageCount: 1 } })],
+    });
+    mockApi.teachMessage.mockResolvedValue({ response: 'Here is my hypothesis.' });
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('Wrongly classified')).toBeInTheDocument());
+
+    await user.click(screen.getByText('Wrong'));
+    await user.click(screen.getByLabelText('Move to T3'));
+
+    // Picking a tier alone must not archive yet — that happens on rule save
+    expect(mockApi.misclassifiedDecision).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(mockApi.teachMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          threadContext: expect.objectContaining({ threadId: 'tX' }),
+          userContext: expect.stringContaining('T3'),
+        }),
+      ),
+    );
+  });
+
+  it('confirming a re-taught rule archives the original decision before saving', async () => {
     const user = userEvent.setup();
     mockApi.getDecisions.mockResolvedValue({
       ...EMPTY,
       T1: [decision({ decisionId: 'd1', threadId: 'tX', priority: 'T1', digestSummary: 'Wrongly classified' })],
     });
-    // Thread is not in the inbox list, so handleMisclassified should fetch it
-    mockApi.getThread.mockResolvedValue({
-      id: 'tX',
-      messages: [{
-        id: 'm1', sender: 'Alice <a@b.com>', toRecipients: [], date: '2024-01-01T00:00:00Z',
-        subject: 'Recovered', snippet: 'snip', htmlBody: null, plaintextBody: 'body', isUnread: false, labelIds: [],
-      }],
+    mockApi.teachMessage.mockResolvedValue({
+      response: 'RULE_PROPOSAL:\n{"trigger":{"type":"sender_domain","domain":"a.com"},"action":"digest","priority":"T3","digestSummaryTemplate":"{subject}"}',
     });
+    mockApi.saveRule.mockResolvedValue({ ruleId: 'r1', matchingThreads: [] });
     render(<App />);
     await waitFor(() => expect(screen.getByText('Wrongly classified')).toBeInTheDocument());
 
     await user.click(screen.getByText('Wrong'));
+    await user.click(screen.getByLabelText('Move to T3'));
+    await waitFor(() => expect(screen.getByText('Confirm rule')).toBeInTheDocument());
+    await user.click(screen.getByText('Confirm rule'));
 
-    expect(mockApi.misclassifiedDecision).toHaveBeenCalledWith('d1');
-    await waitFor(() => expect(mockApi.getThread).toHaveBeenCalledWith('tX'));
+    await waitFor(() => expect(mockApi.misclassifiedDecision).toHaveBeenCalledWith('d1'));
+    expect(mockApi.saveRule).toHaveBeenCalled();
   });
 
   it('Confirm all on T1 calls api.confirmAll with only the unconfirmed decision IDs', async () => {
