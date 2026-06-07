@@ -26,11 +26,6 @@ export interface Thread {
   unreadCount: number;
 }
 
-export interface ThreadsResponse {
-  threads: Thread[];
-  nextPageToken?: string;
-}
-
 export interface MatchingThread {
   threadId: string;
   subject: string;
@@ -77,27 +72,11 @@ export const api = {
   getStatus: () =>
     request<{ authenticated: boolean }>('/api/status'),
 
-  getThreads: (params?: { maxResults?: number; pageToken?: string; q?: string; undecided?: boolean }) => {
-    const qs = new URLSearchParams();
-    if (params?.maxResults) qs.set('maxResults', String(params.maxResults));
-    if (params?.pageToken) qs.set('pageToken', params.pageToken);
-    if (params?.q) qs.set('q', params.q);
-    if (params?.undecided) qs.set('undecided', 'true');
-    const query = qs.size ? `?${qs}` : '';
-    return request<ThreadsResponse>(`/api/gmail/threads${query}`);
-  },
-
   getThread: (id: string) =>
     request<ThreadDetail>(`/api/gmail/threads/${id}`),
 
   getUnreadCount: () =>
     request<{ count: number }>('/api/gmail/unread-count'),
-
-  archiveThread: (id: string) =>
-    request<{ ok: boolean }>(`/api/gmail/threads/${id}/archive`, { method: 'POST' }),
-
-  markAsRead: (id: string) =>
-    request<{ ok: boolean }>(`/api/gmail/threads/${id}/read`, { method: 'POST' }),
 
   getDecisions: () =>
     request<{ T1: DecisionWithThread[]; T2: DecisionWithThread[]; T3: DecisionWithThread[]; T4: DecisionWithThread[]; T5: DecisionWithThread[] }>(

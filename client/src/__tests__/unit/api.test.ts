@@ -55,23 +55,6 @@ describe('GET endpoints', () => {
     expect(result).toEqual({ authenticated: false });
   });
 
-  it('getThreads builds query params from options', async () => {
-    mockFetch.mockReturnValueOnce(okJson({ threads: [] }));
-    await api.getThreads({ undecided: true, maxResults: 20, q: 'in:inbox', pageToken: 'tok' });
-    const url = mockFetch.mock.calls[0]![0] as string;
-    expect(url).toContain('/api/gmail/threads?');
-    expect(url).toContain('undecided=true');
-    expect(url).toContain('maxResults=20');
-    expect(url).toContain('q=in%3Ainbox');
-    expect(url).toContain('pageToken=tok');
-  });
-
-  it('getThreads omits the query string when no params are given', async () => {
-    mockFetch.mockReturnValueOnce(okJson({ threads: [] }));
-    await api.getThreads();
-    expect(mockFetch.mock.calls[0]![0]).toBe('/api/gmail/threads');
-  });
-
   it('getThread calls /api/gmail/threads/:id', async () => {
     mockFetch.mockReturnValueOnce(okJson({ id: 'abc', messages: [] }));
     await api.getThread('abc');

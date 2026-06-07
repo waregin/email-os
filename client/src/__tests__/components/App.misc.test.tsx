@@ -8,7 +8,6 @@ vi.mock('../../api', () => ({
   api: {
     getStatus: vi.fn(),
     getUnreadCount: vi.fn(),
-    getThreads: vi.fn(),
     getDecisions: vi.fn(),
     getThread: vi.fn(),
     teachMessage: vi.fn(),
@@ -50,7 +49,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockApi.getStatus.mockResolvedValue({ authenticated: true });
   mockApi.getUnreadCount.mockResolvedValue({ count: 0 });
-  mockApi.getThreads.mockResolvedValue({ threads: [] });
   mockApi.getDecisions.mockResolvedValue(EMPTY);
   mockApi.getThread.mockResolvedValue({ id: 'x', messages: [] });
   mockApi.misclassifiedDecision.mockResolvedValue({ ok: true, threadId: 't1' });

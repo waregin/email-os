@@ -2,10 +2,8 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import request from 'supertest';
 
 // --- Hoisted mock refs ---
-const { mockThreadsList, mockThreadsGet, mockThreadsModify, mockLabelsGet } = vi.hoisted(() => ({
-  mockThreadsList: vi.fn(),
+const { mockThreadsGet, mockLabelsGet } = vi.hoisted(() => ({
   mockThreadsGet: vi.fn(),
-  mockThreadsModify: vi.fn(),
   mockLabelsGet: vi.fn(),
 }));
 
@@ -35,7 +33,7 @@ vi.mock('googleapis', () => ({
   google: {
     gmail: vi.fn().mockReturnValue({
       users: {
-        threads: { list: mockThreadsList, get: mockThreadsGet, modify: mockThreadsModify },
+        threads: { get: mockThreadsGet },
         labels: { get: mockLabelsGet },
       },
     }),
@@ -84,112 +82,8 @@ beforeEach(async () => {
   // Reset mocks but keep session active
   await prisma.triageDecision.deleteMany();
   await prisma.threadCache.deleteMany();
-  mockThreadsList.mockReset();
   mockThreadsGet.mockReset();
-  mockThreadsModify.mockReset();
   mockLabelsGet.mockReset();
-});
-
-describe('GET /api/gmail/threads', () => {
-  it('returns 401 without auth', async () => {
-    const res = await request(app).get('/api/gmail/threads');
-    expect(res.status).toBe(401);
-  });
-
-  it('lists threads with subject, sender, and date metadata', async () => {
-    mockThreadsList.mockResolvedValueOnce({
-      data: { threads: [{ id: 'th-1', snippet: 'snippet text' }], nextPageToken: null },
-    });
-    mockThreadsGet.mockResolvedValueOnce(makeThreadGetResponse('Test Subject', 'alice@example.com'));
-
-    const res = await agent.get('/api/gmail/threads');
-    expect(res.status).toBe(200);
-    expect(res.body.threads).toHaveLength(1);
-    expect(res.body.threads[0].subject).toBe('Test Subject');
-    expect(res.body.threads[0].sender).toBe('alice@example.com');
-  });
-
-  it('passes search query q to Gmail API', async () => {
-    mockThreadsList.mockResolvedValueOnce({ data: { threads: [], nextPageToken: null } });
-
-    await agent.get('/api/gmail/threads?q=label:important');
-    const call = mockThreadsList.mock.calls[0]![0] as { q: string };
-    expect(call.q).toBe('label:important');
-  });
-
-  it('filters to undecided threads when undecided=true', async () => {
-    const user = await prisma.user.findUnique({ where: { email: 'test@example.com' } });
-    await prisma.triageDecision.create({
-      data: { threadId: 'decided-thread-id', userId: user!.id, priority: 'T3', digestSummary: 'x' },
-    });
-
-    mockThreadsList.mockResolvedValueOnce({
-      data: {
-        threads: [
-          { id: 'decided-thread-id', snippet: 'decided' },
-          { id: 'new-thread-id', snippet: 'new' },
-        ],
-        nextPageToken: null,
-      },
-    });
-    mockThreadsGet.mockResolvedValueOnce(makeThreadGetResponse('New Thread', 'bob@example.com'));
-
-    const res = await agent.get('/api/gmail/threads?undecided=true');
-    expect(res.status).toBe(200);
-    const ids = (res.body.threads as Array<{ id: string }>).map((t) => t.id);
-    expect(ids).not.toContain('decided-thread-id');
-    expect(ids).toContain('new-thread-id');
-  });
-
-  it('returns 500 when Gmail API fails', async () => {
-    mockThreadsList.mockRejectedValueOnce(new Error('Gmail API error'));
-    const res = await agent.get('/api/gmail/threads');
-    expect(res.status).toBe(500);
-  });
-
-  it('paginates to a second page when the first page has only decided threads (undecided=true)', async () => {
-    const user = await prisma.user.findUnique({ where: { email: 'test@example.com' } });
-    await prisma.triageDecision.create({
-      data: { threadId: 'decided-p1', userId: user!.id, priority: 'T2', digestSummary: 'x' },
-    });
-    mockThreadsList
-      .mockResolvedValueOnce({
-        data: { threads: [{ id: 'decided-p1', snippet: 'x' }], nextPageToken: 'page2' },
-      })
-      .mockResolvedValueOnce({
-        data: { threads: [{ id: 'fresh-p2', snippet: 'y' }], nextPageToken: null },
-      });
-    mockThreadsGet.mockResolvedValueOnce(makeThreadGetResponse('Fresh', 'sender@example.com'));
-
-    const res = await agent.get('/api/gmail/threads?undecided=true');
-    expect(res.status).toBe(200);
-    expect(mockThreadsList).toHaveBeenCalledTimes(2);
-    const ids = (res.body.threads as Array<{ id: string }>).map((t) => t.id);
-    expect(ids).toContain('fresh-p2');
-    expect(ids).not.toContain('decided-p1');
-  });
-
-  it('falls back to default values when one thread metadata fetch fails inside the batch', async () => {
-    mockThreadsList.mockResolvedValueOnce({
-      data: {
-        threads: [
-          { id: 'th-ok', snippet: 'ok' },
-          { id: 'th-fail', snippet: 'fail' },
-        ],
-        nextPageToken: null,
-      },
-    });
-    mockThreadsGet
-      .mockResolvedValueOnce(makeThreadGetResponse('Good Subject', 'ok@example.com'))
-      .mockRejectedValueOnce(new Error('individual fetch error'));
-
-    const res = await agent.get('/api/gmail/threads');
-    expect(res.status).toBe(200);
-    expect(res.body.threads).toHaveLength(2);
-    const failing = (res.body.threads as Array<{ id: string; subject: string }>).find(t => t.id === 'th-fail');
-    expect(failing!.subject).toBe('(no subject)');
-    expect(failing!.sender).toBe('');
-  });
 });
 
 describe('GET /api/gmail/threads/:id', () => {
@@ -316,40 +210,6 @@ describe('GET /api/gmail/threads/:id', () => {
     expect(res.status).toBe(200);
     expect(res.body.messages[0].isUnread).toBe(false);
     expect(res.body.messages[0].labelIds).toEqual([]);
-  });
-});
-
-describe('POST /api/gmail/threads/:id/archive', () => {
-  it('calls Gmail modify to remove INBOX label', async () => {
-    mockThreadsModify.mockResolvedValueOnce({});
-    const res = await agent.post('/api/gmail/threads/th-1/archive');
-    expect(res.status).toBe(200);
-    expect(res.body.ok).toBe(true);
-    const call = mockThreadsModify.mock.calls[0]![0] as { requestBody: { removeLabelIds: string[] } };
-    expect(call.requestBody.removeLabelIds).toContain('INBOX');
-  });
-
-  it('returns 500 when Gmail modify throws', async () => {
-    mockThreadsModify.mockRejectedValueOnce(new Error('Gmail error'));
-    const res = await agent.post('/api/gmail/threads/th-1/archive');
-    expect(res.status).toBe(500);
-  });
-});
-
-describe('POST /api/gmail/threads/:id/read', () => {
-  it('calls Gmail modify to remove UNREAD label', async () => {
-    mockThreadsModify.mockResolvedValueOnce({});
-    const res = await agent.post('/api/gmail/threads/th-1/read');
-    expect(res.status).toBe(200);
-    expect(res.body.ok).toBe(true);
-    const call = mockThreadsModify.mock.calls[0]![0] as { requestBody: { removeLabelIds: string[] } };
-    expect(call.requestBody.removeLabelIds).toContain('UNREAD');
-  });
-
-  it('returns 500 when Gmail modify throws', async () => {
-    mockThreadsModify.mockRejectedValueOnce(new Error('Gmail error'));
-    const res = await agent.post('/api/gmail/threads/th-1/read');
-    expect(res.status).toBe(500);
   });
 });
 
