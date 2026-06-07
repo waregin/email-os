@@ -86,7 +86,7 @@ describe('runTriagePass', () => {
     });
 
     const result = await runTriagePass(user.id);
-    expect(result).toEqual({ fetched: 0, processed: 0, matched: 0, aiClassified: 0, t5Fallback: 0, unmatched: 0 });
+    expect(result).toEqual({ fetched: 0, processed: 0, matched: 0, aiClassified: 0, t5Fallback: 0 });
     expect(mockThreadsList).not.toHaveBeenCalled();
   });
 
@@ -110,7 +110,7 @@ describe('runTriagePass', () => {
 
     const result = await runTriagePass(user.id);
     expect(result.matched).toBe(0);
-    expect(result.unmatched).toBe(1);
+    expect(result.t5Fallback).toBe(1);
   });
 
   it('prefers a taught rule over an ai_guess rule for the same thread', async () => {
@@ -170,7 +170,7 @@ describe('runTriagePass', () => {
     const result = await runTriagePass(user.id);
     expect(result.fetched).toBe(2);
     expect(result.matched).toBe(0);
-    expect(result.unmatched).toBe(2);
+    expect(result.t5Fallback).toBe(2);
   });
 
   it('skips threads with an active non-archived decision linked to a rule', async () => {
@@ -358,7 +358,7 @@ describe('runTriagePass', () => {
     expect(result.fetched).toBe(2);
     expect(result.processed).toBe(2);
     expect(result.matched).toBe(1);
-    expect(result.unmatched).toBe(1);
+    expect(result.t5Fallback).toBe(1);
   });
 
   it('handles null threads array in Gmail list response', async () => {
@@ -492,7 +492,7 @@ describe('runTriagePass', () => {
 
     const result = await runTriagePass(user.id);
     expect(result.t5Fallback).toBe(1);
-    expect(result.unmatched).toBe(1);
+    expect(result.t5Fallback).toBe(1);
 
     const decision = await prisma.triageDecision.findFirst({ where: { threadId: 'no-cls-th', userId: user.id } });
     expect(decision!.priority).toBe('T5');

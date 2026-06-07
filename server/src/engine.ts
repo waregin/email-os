@@ -24,11 +24,10 @@ export async function runTriagePass(userId: string): Promise<{
   matched: number;
   aiClassified: number;
   t5Fallback: number;
-  unmatched: number; // alias for t5Fallback — kept for backward compatibility
 }> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user?.accessToken) {
-    return { fetched: 0, processed: 0, matched: 0, aiClassified: 0, t5Fallback: 0, unmatched: 0 };
+    return { fetched: 0, processed: 0, matched: 0, aiClassified: 0, t5Fallback: 0 };
   }
 
   const rules = await prisma.triageRule.findMany({
@@ -133,7 +132,7 @@ export async function runTriagePass(userId: string): Promise<{
   }
 
   if (unmatchedThreads.length === 0) {
-    return { fetched: rawThreads.length, processed, matched, aiClassified: 0, t5Fallback: 0, unmatched: 0 };
+    return { fetched: rawThreads.length, processed, matched, aiClassified: 0, t5Fallback: 0 };
   }
 
 
@@ -255,5 +254,5 @@ export async function runTriagePass(userId: string): Promise<{
     }
   }
 
-  return { fetched: rawThreads.length, processed, matched, aiClassified, t5Fallback, unmatched: t5Fallback };
+  return { fetched: rawThreads.length, processed, matched, aiClassified, t5Fallback };
 }
