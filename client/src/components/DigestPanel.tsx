@@ -381,6 +381,7 @@ export function DigestPanel({
   useEffect(() => {
     if (!isOpen) return;
     const liveIds = new Set(items.map((i) => i.decisionId));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- functional updater reads prev state; no stale-closure risk
     setSnapshotItems((prev) => {
       const pruned = prev.filter((i) => liveIds.has(i.decisionId));
       return pruned.length === prev.length ? prev : pruned;

@@ -352,6 +352,7 @@ function TeachPanel({
 
   useEffect(() => {
     if (!thread) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting all state when the active thread changes is intentional cleanup on dep change
       setMessages([]);
       setInput('');
       setError(null);
