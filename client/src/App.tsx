@@ -109,6 +109,7 @@ function MainApp() {
   const [teachThread, setTeachThread] = useState<Thread | null>(null);
   const [decisions, setDecisions] = useState<DecisionsState>({ T1: [], T2: [], T3: [], T4: [] });
   const [openTier, setOpenTier] = useState<'T1' | 'T2' | 'T3' | 'T4' | null>('T1');
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     api.getThreads({ undecided: true })
@@ -246,6 +247,20 @@ function MainApp() {
     api.getDecisions().then((d) => setDecisions(dedupeDecisions(d))).catch(() => {});
   }, []);
 
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    setError(null);
+    Promise.all([
+      api.getThreads({ undecided: true }).then(({ threads, nextPageToken }) => {
+        setThreads(threads);
+        setNextPageToken(nextPageToken);
+      }),
+      api.getDecisions().then((d) => setDecisions(dedupeDecisions(d))),
+    ])
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setRefreshing(false));
+  }, []);
+
   const decidedThreadIds = new Set(
     [...decisions.T1, ...decisions.T2, ...decisions.T3, ...decisions.T4].map((d) => d.threadId),
   );
@@ -257,6 +272,29 @@ function MainApp() {
 
         <header className="flex items-center justify-between border-b border-gray-800 pb-4">
           <h1 className="text-base font-semibold tracking-tight text-gray-100">Email OS</h1>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            aria-label="Refresh"
+            title="Refresh"
+            className="text-gray-400 hover:text-gray-200 disabled:text-gray-600 disabled:cursor-not-allowed transition-colors"
+          >
+            <svg
+              className={refreshing ? 'animate-spin' : ''}
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+              <path d="M21 3v5h-5" />
+            </svg>
+          </button>
         </header>
 
         {/* Digest */}

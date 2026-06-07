@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import App from '../../App';
 
 vi.mock('../../api', () => ({
@@ -91,5 +91,39 @@ describe('App authenticated side effects', () => {
     await waitFor(() => {
       expect(document.title).toBe('Email OS');
     });
+  });
+});
+
+describe('App refresh button', () => {
+  it('re-fetches threads and decisions when clicked', async () => {
+    mockApi.getStatus.mockResolvedValueOnce({ authenticated: true });
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('Digest')).toBeInTheDocument());
+
+    // Ignore the initial mount fetches; only count what the click triggers
+    mockApi.getThreads.mockClear();
+    mockApi.getDecisions.mockClear();
+
+    fireEvent.click(screen.getByLabelText('Refresh'));
+
+    await waitFor(() => {
+      expect(mockApi.getThreads).toHaveBeenCalledWith({ undecided: true });
+      expect(mockApi.getDecisions).toHaveBeenCalled();
+    });
+  });
+
+  it('disables the refresh button while a refresh is in flight', async () => {
+    mockApi.getStatus.mockResolvedValueOnce({ authenticated: true });
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('Digest')).toBeInTheDocument());
+
+    // Make the refresh fetches hang so the in-flight state persists
+    mockApi.getThreads.mockReturnValueOnce(new Promise(() => {}));
+    mockApi.getDecisions.mockReturnValueOnce(new Promise(() => {}));
+
+    const button = screen.getByLabelText('Refresh');
+    fireEvent.click(button);
+
+    await waitFor(() => expect(button).toBeDisabled());
   });
 });
