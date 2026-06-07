@@ -16,7 +16,6 @@ interface DigestPanelProps {
   onFollowup: (decisionId: string, note?: string) => void;
   onOpenTeach: (item: DecisionWithThread, opts: { correctTier: string }) => void;
   onConfirmAll: (decisionIds: string[], tier: string) => void;
-  onViewThread: (threadId: string) => void;
 }
 
 const TIERS = ['T1', 'T2', 'T3', 'T4'] as const;
@@ -262,7 +261,6 @@ function DigestGroupPanel({
   onToggle,
   expandedDecisionId,
   setExpandedDecisionId,
-  onViewThread,
   onDone,
   onConfirm,
   onFollowup,
@@ -275,7 +273,6 @@ function DigestGroupPanel({
   onToggle: () => void;
   expandedDecisionId: string | null;
   setExpandedDecisionId: (id: string | null) => void;
-  onViewThread: (threadId: string) => void;
   onDone: (id: string) => void;
   onConfirm: (id: string) => void;
   onFollowup: (id: string, note?: string) => void;
@@ -318,7 +315,6 @@ function DigestGroupPanel({
                 onToggle={() => {
                   const opening = expandedDecisionId !== item.decisionId;
                   setExpandedDecisionId(opening ? item.decisionId : null);
-                  if (opening) onViewThread(item.threadId);
                 }}
                 onDone={onDone}
                 onConfirm={onConfirm}
@@ -353,7 +349,6 @@ export function DigestPanel({
   onFollowup,
   onOpenTeach,
   onConfirmAll,
-  onViewThread,
 }: DigestPanelProps) {
   const isT12 = tier === 'T1' || tier === 'T2';
   const isT4 = tier === 'T4';
@@ -489,7 +484,6 @@ export function DigestPanel({
                   onToggle={() => toggleGroupCollapsed(groupLabel)}
                   expandedDecisionId={expandedDecisionId}
                   setExpandedDecisionId={setExpandedDecisionId}
-                  onViewThread={onViewThread}
                   onDone={handleDone}
                   onConfirm={handleConfirm}
                   onFollowup={handleFollowup}
@@ -512,7 +506,6 @@ export function DigestPanel({
                     onToggle={() => {
                       const opening = expandedDecisionId !== item.decisionId;
                       setExpandedDecisionId(opening ? item.decisionId : null);
-                      if (opening) onViewThread(item.threadId);
                     }}
                     onDone={handleDone}
                     onConfirm={handleConfirm}

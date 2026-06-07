@@ -2,12 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DigestPanel } from '../../components/DigestPanel';
+import { api } from '../../api';
 import type { DecisionWithThread } from '../../api';
 
 // DigestPanel renders ThreadDetail (when an item is expanded), which imports the api.
 vi.mock('../../api', () => ({
   api: { getThread: vi.fn().mockResolvedValue({ id: 't', messages: [] }) },
 }));
+
+const mockApi = vi.mocked(api);
 
 function makeItem(overrides: Partial<DecisionWithThread> & { decisionId: string; threadId: string }): DecisionWithThread {
   return {
@@ -39,7 +42,6 @@ function defaultProps() {
     onFollowup: vi.fn(),
     onOpenTeach: vi.fn(),
     onConfirmAll: vi.fn(),
-    onViewThread: vi.fn(),
   };
 }
 
@@ -180,13 +182,13 @@ describe('DigestPanel actions', () => {
     expect(props.onDone).toHaveBeenCalledWith('d1');
   });
 
-  it('expanding a T1 item calls onViewThread with the thread id', async () => {
+  it('clicking a T1 item row expands it and fetches the thread', async () => {
     const user = userEvent.setup();
     const props = defaultProps();
-    const items = [makeItem({ decisionId: 'd1', threadId: 't-view', priority: 'T1', digestSummary: 'click me' })];
+    const items = [makeItem({ decisionId: 'd1', threadId: 't-expand', priority: 'T1', digestSummary: 'click me' })];
     render(<DigestPanel tier="T1" items={items} isOpen={true} {...props} />);
     await user.click(screen.getByText('click me'));
-    expect(props.onViewThread).toHaveBeenCalledWith('t-view');
+    expect(mockApi.getThread).toHaveBeenCalledWith('t-expand');
   });
 
   it('clicking Followup reveals an inline note input prefilled with the subject', async () => {
@@ -336,15 +338,14 @@ describe('DigestPanel T4 group expansion', () => {
     });
   }
 
-  it('clicking a T4 item inside an expanded group calls onViewThread', async () => {
+  it('clicking a T4 item inside an expanded group fetches the thread', async () => {
     const user = userEvent.setup();
     const props = defaultProps();
-    const items = [t4Item('d1', 't-view', 'Newsletters', 'Weekly Digest')];
+    const items = [t4Item('d1', 't-expand', 'Newsletters', 'Weekly Digest')];
     render(<DigestPanel tier="T4" items={items} isOpen={true} {...props} />);
-
     await user.click(screen.getByText(/Newsletters/));
     await user.click(screen.getByText('Weekly Digest'));
-    expect(props.onViewThread).toHaveBeenCalledWith('t-view');
+    expect(mockApi.getThread).toHaveBeenCalledWith('t-expand');
   });
 
   it('expands a category group to reveal its items and a per-group Confirm all', async () => {

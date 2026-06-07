@@ -275,7 +275,6 @@ function MainApp() {
                 onFollowup={handleFollowup}
                 onOpenTeach={handleOpenTeach}
                 onConfirmAll={handleConfirmAll}
-                onViewThread={() => {}}
               />
             ))}
             {decisions.T5.length > 0 && (
@@ -291,7 +290,6 @@ function MainApp() {
                 onFollowup={handleFollowup}
                 onOpenTeach={handleOpenTeach}
                 onConfirmAll={handleConfirmAll}
-                onViewThread={() => {}}
               />
             )}
           </div>
