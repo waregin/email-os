@@ -48,7 +48,7 @@ export async function createTestRule(userId: string, overrides: {
       priority,
       digestSummaryTemplate,
       notes: notes ?? null,
-      source: 'agent',
+      source: 'taught',
     },
   });
 }

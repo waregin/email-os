@@ -31,14 +31,21 @@ model TriageRule {
   user                  User             @relation(fields: [userId], references: [id])
   trigger               String           // JSON string
   action                String
-  priority              String           // T1 | T2 | T3 | T4
+  priority              String           // T1 | T2 | T3 | T4 | T5
   categoryLabel         String?          // T4 only — groups items in Browse panel
   digestSummaryTemplate String
   notes                 String?
-  source                String           // manual | agent
+  source                String           // manual | taught | ai_guess
+  isActive              Boolean          @default(true)
+  parentId              String?          // points to deactivated predecessor when this row is a modified version
+  parent                TriageRule?      @relation("RuleHistory", fields: [parentId], references: [id])
+  children              TriageRule[]     @relation("RuleHistory")
+  pendingSuggestion     String?          // JSON: health-check proposal for taught/manual rules awaiting user review
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
   decisions             TriageDecision[]
+
+  @@index([userId, isActive])
 }
 
 model TriageDecision {
@@ -69,6 +76,7 @@ model ThreadCache {
   date          String
   labelIds      String
   toAddresses   String          @default("")
+  listId        String?         // List-ID header value (mailing list identity)
   htmlBody      String?
   plaintextBody String?
   cachedAt      DateTime        @default(now())
@@ -92,6 +100,7 @@ model CachedMessage {
   plaintextBody String?
   isUnread      Boolean
   labelIds      String      @default("[]")
+  listId        String?     // List-ID header value (mailing list identity)
   position      Int
   cachedAt      DateTime    @default(now())
 

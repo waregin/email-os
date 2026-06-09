@@ -55,23 +55,6 @@ describe('GET endpoints', () => {
     expect(result).toEqual({ authenticated: false });
   });
 
-  it('getThreads builds query params from options', async () => {
-    mockFetch.mockReturnValueOnce(okJson({ threads: [] }));
-    await api.getThreads({ undecided: true, maxResults: 20, q: 'in:inbox', pageToken: 'tok' });
-    const url = mockFetch.mock.calls[0]![0] as string;
-    expect(url).toContain('/api/gmail/threads?');
-    expect(url).toContain('undecided=true');
-    expect(url).toContain('maxResults=20');
-    expect(url).toContain('q=in%3Ainbox');
-    expect(url).toContain('pageToken=tok');
-  });
-
-  it('getThreads omits the query string when no params are given', async () => {
-    mockFetch.mockReturnValueOnce(okJson({ threads: [] }));
-    await api.getThreads();
-    expect(mockFetch.mock.calls[0]![0]).toBe('/api/gmail/threads');
-  });
-
   it('getThread calls /api/gmail/threads/:id', async () => {
     mockFetch.mockReturnValueOnce(okJson({ id: 'abc', messages: [] }));
     await api.getThread('abc');
@@ -139,6 +122,16 @@ describe('POST agent endpoints', () => {
     expect(JSON.parse(options.body)).toEqual({ rule });
   });
 
+  it('saveRule includes categoryLabel when provided and omits digestSummaryTemplate when absent', async () => {
+    mockFetch.mockReturnValueOnce(okJson({ ruleId: 'r1', matchingThreads: [] }));
+    const rule = { trigger: '{}', action: 'digest', priority: 'T4', categoryLabel: 'Newsletters' };
+    await api.saveRule(rule);
+    const [, options] = mockFetch.mock.calls[0]!;
+    const body = JSON.parse(options.body);
+    expect(body.rule.categoryLabel).toBe('Newsletters');
+    expect(body.rule.digestSummaryTemplate).toBeUndefined();
+  });
+
   it('applyRule posts threadIds to the apply path', async () => {
     mockFetch.mockReturnValueOnce(okJson({ ok: true, applied: 2 }));
     await api.applyRule('r1', ['t1', 't2']);
@@ -157,5 +150,27 @@ describe('POST agent endpoints', () => {
     const [url, options] = mockFetch.mock.calls[0]!;
     expect(url).toBe('/api/agent/teach');
     expect(JSON.parse(options.body)).toEqual(payload);
+  });
+
+  it('getRulesWithSuggestions calls GET /api/agent/rules/with-suggestions', async () => {
+    mockFetch.mockReturnValueOnce(okJson([]));
+    await api.getRulesWithSuggestions();
+    expect(mockFetch.mock.calls[0]![0]).toBe('/api/agent/rules/with-suggestions');
+  });
+
+  it('acceptSuggestion posts to the accept path', async () => {
+    mockFetch.mockReturnValueOnce(okJson({ ok: true, ruleId: 'r2' }));
+    await api.acceptSuggestion('r1');
+    const [url, options] = mockFetch.mock.calls[0]!;
+    expect(url).toBe('/api/agent/rules/r1/suggestion/accept');
+    expect(options.method).toBe('POST');
+  });
+
+  it('dismissSuggestion posts to the dismiss path', async () => {
+    mockFetch.mockReturnValueOnce(okJson({ ok: true }));
+    await api.dismissSuggestion('r1');
+    const [url, options] = mockFetch.mock.calls[0]!;
+    expect(url).toBe('/api/agent/rules/r1/suggestion/dismiss');
+    expect(options.method).toBe('POST');
   });
 });

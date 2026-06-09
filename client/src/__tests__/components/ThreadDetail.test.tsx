@@ -128,6 +128,18 @@ describe('ThreadDetail message expansion interaction', () => {
     });
   });
 
+  it('lets target=_blank links escape the iframe sandbox so they open normally', async () => {
+    mockGetThread.mockResolvedValueOnce({
+      id: 't1',
+      messages: [makeMessage({ id: 'm1', isUnread: true, htmlBody: '<a href="https://example.com">link</a>' })],
+    });
+    const { container } = render(<ThreadDetail threadId="t1" />);
+    await waitFor(() => expect(container.querySelector('iframe')).toBeInTheDocument());
+    const sandbox = container.querySelector('iframe')!.getAttribute('sandbox') ?? '';
+    // Without this token, popups opened from the sandbox inherit its restrictions and render broken
+    expect(sandbox.split(' ')).toContain('allow-popups-to-escape-sandbox');
+  });
+
   it('updates iframe height when the iframe posts an iframe-height message', async () => {
     mockGetThread.mockResolvedValueOnce({
       id: 't1',
@@ -137,12 +149,15 @@ describe('ThreadDetail message expansion interaction', () => {
     await waitFor(() => expect(container.querySelector('iframe')).toBeInTheDocument());
 
     const iframe = container.querySelector('iframe') as HTMLIFrameElement;
-    window.dispatchEvent(new MessageEvent('message', {
-      data: { type: 'iframe-height', h: 300 },
-      source: iframe.contentWindow,
-    }));
-
-    expect(iframe.style.height).toBe('300px');
+    // useEffect registers the message listener asynchronously after render, so
+    // wrap dispatch + assertion in waitFor to retry until the listener is live.
+    await waitFor(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        data: { type: 'iframe-height', h: 300 },
+        source: iframe.contentWindow,
+      }));
+      expect(iframe.style.height).toBe('300px');
+    });
   });
 
   it('ignores a postMessage from a source other than the iframe', async () => {

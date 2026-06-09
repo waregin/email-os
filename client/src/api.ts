@@ -26,17 +26,23 @@ export interface Thread {
   unreadCount: number;
 }
 
-export interface ThreadsResponse {
-  threads: Thread[];
-  nextPageToken?: string;
-}
-
 export interface MatchingThread {
   threadId: string;
   subject: string;
   sender: string;
   date: string;
   snippet: string;
+}
+
+export interface RuleWithSuggestion {
+  id: string;
+  trigger: string;
+  priority: string;
+  categoryLabel: string | null;
+  digestSummaryTemplate: string;
+  notes: string | null;
+  source: string;
+  pendingSuggestion: string;
 }
 
 export interface DecisionWithThread {
@@ -77,30 +83,14 @@ export const api = {
   getStatus: () =>
     request<{ authenticated: boolean }>('/api/status'),
 
-  getThreads: (params?: { maxResults?: number; pageToken?: string; q?: string; undecided?: boolean }) => {
-    const qs = new URLSearchParams();
-    if (params?.maxResults) qs.set('maxResults', String(params.maxResults));
-    if (params?.pageToken) qs.set('pageToken', params.pageToken);
-    if (params?.q) qs.set('q', params.q);
-    if (params?.undecided) qs.set('undecided', 'true');
-    const query = qs.size ? `?${qs}` : '';
-    return request<ThreadsResponse>(`/api/gmail/threads${query}`);
-  },
-
   getThread: (id: string) =>
     request<ThreadDetail>(`/api/gmail/threads/${id}`),
 
   getUnreadCount: () =>
     request<{ count: number }>('/api/gmail/unread-count'),
 
-  archiveThread: (id: string) =>
-    request<{ ok: boolean }>(`/api/gmail/threads/${id}/archive`, { method: 'POST' }),
-
-  markAsRead: (id: string) =>
-    request<{ ok: boolean }>(`/api/gmail/threads/${id}/read`, { method: 'POST' }),
-
   getDecisions: () =>
-    request<{ T1: DecisionWithThread[]; T2: DecisionWithThread[]; T3: DecisionWithThread[]; T4: DecisionWithThread[] }>(
+    request<{ T1: DecisionWithThread[]; T2: DecisionWithThread[]; T3: DecisionWithThread[]; T4: DecisionWithThread[]; T5: DecisionWithThread[] }>(
       '/api/gmail/decisions',
     ),
 
@@ -110,8 +100,11 @@ export const api = {
   doneDecision: (decisionId: string) =>
     request<{ ok: boolean }>(`/api/gmail/decisions/${decisionId}/done`, { method: 'POST' }),
 
-  followupDecision: (decisionId: string) =>
-    request<{ ok: boolean }>(`/api/gmail/decisions/${decisionId}/followup`, { method: 'POST' }),
+  followupDecision: (decisionId: string, note?: string) =>
+    request<{ ok: boolean }>(`/api/gmail/decisions/${decisionId}/followup`, {
+      method: 'POST',
+      body: JSON.stringify(note ? { note } : {}),
+    }),
 
   confirmAll: (decisionIds: string[], tier: string) =>
     request<{ ok: boolean; processed: number }>('/api/gmail/decisions/confirm-all', {
@@ -127,7 +120,8 @@ export const api = {
     trigger: string;
     action: string;
     priority: string;
-    digestSummaryTemplate: string;
+    categoryLabel?: string;
+    digestSummaryTemplate?: string;
     notes?: string;
   }) =>
     request<{ ruleId: string; matchingThreads: MatchingThread[] }>('/api/agent/rules', {
@@ -150,4 +144,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  getRulesWithSuggestions: () =>
+    request<RuleWithSuggestion[]>('/api/agent/rules/with-suggestions'),
+
+  acceptSuggestion: (ruleId: string) =>
+    request<{ ok: boolean; ruleId: string }>(`/api/agent/rules/${ruleId}/suggestion/accept`, { method: 'POST' }),
+
+  dismissSuggestion: (ruleId: string) =>
+    request<{ ok: boolean }>(`/api/agent/rules/${ruleId}/suggestion/dismiss`, { method: 'POST' }),
 };

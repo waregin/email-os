@@ -2,34 +2,84 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../../App';
-import type { Thread } from '../../api';
+import type { DecisionWithThread } from '../../api';
 
 vi.mock('../../api', () => ({
   api: {
     getStatus: vi.fn(),
     getUnreadCount: vi.fn(),
-    getThreads: vi.fn(),
     getDecisions: vi.fn(),
     getThread: vi.fn(),
     teachMessage: vi.fn(),
     saveRule: vi.fn(),
     applyRule: vi.fn(),
+    misclassifiedDecision: vi.fn(),
+    getRulesWithSuggestions: vi.fn(),
   },
 }));
 
 import { api } from '../../api';
 const mockApi = vi.mocked(api);
 
-const EMPTY = { T1: [], T2: [], T3: [], T4: [] };
+const EMPTY = { T1: [], T2: [], T3: [], T4: [], T5: [] };
 
-const THREAD: Thread = {
-  id: 't1',
-  snippet: 'Your invoice is ready',
-  subject: 'Invoice #1234',
-  sender: 'Acme Billing <billing@acme.com>',
-  date: '2024-01-01T00:00:00Z',
-  isUnread: true,
-  unreadCount: 1,
+// An unclassified (T5) decision — the teach flow is now reached by teaching a
+// T5 item: open the T5 panel, click Teach, pick the correct tier.
+const T5_DECISION: DecisionWithThread = {
+  decisionId: 'd1',
+  threadId: 't1',
+  priority: 'T5',
+  categoryLabel: null,
+  digestSummary: 'Unclassified',
+  decidedAt: '2024-01-01T00:00:00Z',
+  confirmedByUser: false,
+  userFlagged: false,
+  thread: {
+    subject: 'Invoice #1234',
+    sender: 'Acme Billing <billing@acme.com>',
+    date: '2024-01-01T00:00:00Z',
+    snippet: 'Your invoice is ready',
+    unreadCount: 1,
+    messageCount: 1,
+  },
+};
+
+const T3_DECISION: DecisionWithThread = {
+  decisionId: 'd2',
+  threadId: 't2',
+  priority: 'T3',
+  categoryLabel: null,
+  digestSummary: 'Newsletter: weekly digest',
+  decidedAt: '2024-01-01T00:00:00Z',
+  confirmedByUser: false,
+  userFlagged: false,
+  thread: {
+    subject: 'Weekly Digest',
+    sender: 'news@example.com',
+    date: '2024-01-01T00:00:00Z',
+    snippet: 'This week in news',
+    unreadCount: 1,
+    messageCount: 1,
+  },
+};
+
+const T4_DECISION: DecisionWithThread = {
+  decisionId: 'd3',
+  threadId: 't3',
+  priority: 'T4',
+  categoryLabel: 'Newsletters',
+  digestSummary: 'Weekly Digest',
+  decidedAt: '2024-01-01T00:00:00Z',
+  confirmedByUser: false,
+  userFlagged: false,
+  thread: {
+    subject: 'Weekly Digest',
+    sender: 'news@example.com',
+    date: '2024-01-01T00:00:00Z',
+    snippet: 'This week in news',
+    unreadCount: 1,
+    messageCount: 1,
+  },
 };
 
 // An assistant reply that embeds a rule proposal
@@ -38,20 +88,36 @@ RULE_PROPOSAL:
 {"trigger":{"type":"sender_domain","domain":"acme.com"},"action":"digest","priority":"T3","digestSummaryTemplate":"Invoice from {sender}"}
 Does that look right?`;
 
+const T4_PROPOSAL_RESPONSE = `Here is a T4 Browse rule.
+RULE_PROPOSAL:
+{"trigger":{"type":"sender_domain","domain":"newsletters.com"},"action":"digest","priority":"T4","categoryLabel":"Newsletters","digestSummaryTemplate":"{subject}"}
+Does that look right?`;
+
+const T4_NO_LABEL_RESPONSE = `Here is a T4 Browse rule without a label.
+RULE_PROPOSAL:
+{"trigger":{"type":"sender_domain","domain":"newsletters.com"},"action":"digest","priority":"T4","digestSummaryTemplate":"{subject}"}
+Does that look right?`;
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockApi.getStatus.mockResolvedValue({ authenticated: true });
   mockApi.getUnreadCount.mockResolvedValue({ count: 0 });
-  mockApi.getThreads.mockResolvedValue({ threads: [THREAD] });
-  mockApi.getDecisions.mockResolvedValue(EMPTY);
+  mockApi.getDecisions.mockResolvedValue({ ...EMPTY, T5: [T5_DECISION] });
   mockApi.getThread.mockResolvedValue({ id: 't1', messages: [] });
+  mockApi.getRulesWithSuggestions.mockResolvedValue([]);
   mockApi.saveRule.mockResolvedValue({ ruleId: 'r1', matchingThreads: [] });
   mockApi.applyRule.mockResolvedValue({ ok: true, applied: 1 });
+  mockApi.misclassifiedDecision.mockResolvedValue({ ok: true, threadId: 't1' });
 });
 
+// Open the T5 panel, click the item's Teach button, and pick the correct tier —
+// which opens the TeachPanel with that tier as context.
 async function openTeachPanel(user: ReturnType<typeof userEvent.setup>) {
+  await waitFor(() => expect(screen.getByText('T5 Unclassified')).toBeInTheDocument());
+  await user.click(screen.getByText('T5 Unclassified'));
   await waitFor(() => expect(screen.getByText('Invoice #1234')).toBeInTheDocument());
   await user.click(screen.getByText('Teach'));
+  await user.click(screen.getByLabelText('Move to T3'));
 }
 
 describe('TeachPanel open + conversation', () => {
@@ -203,5 +269,179 @@ describe('TeachPanel rule proposal flow', () => {
 
     await waitFor(() => expect(screen.getByText('Rule saved.')).toBeInTheDocument());
     expect(mockApi.applyRule).not.toHaveBeenCalled();
+  });
+
+  it('receiving a revised proposal resets rule phase so the new proposal can be confirmed', async () => {
+    const user = userEvent.setup();
+    const REVISED_RESPONSE = `I've updated the rule.
+RULE_PROPOSAL:
+{"trigger":{"type":"sender_domain","domain":"acme.com"},"action":"digest","priority":"T2","digestSummaryTemplate":"Updated: {subject}"}
+Better?`;
+    mockApi.teachMessage
+      .mockResolvedValueOnce({ response: PROPOSAL_RESPONSE })
+      .mockResolvedValueOnce({ response: REVISED_RESPONSE });
+    render(<App />);
+    await openTeachPanel(user);
+    await waitFor(() => expect(screen.getByText('Revise')).toBeInTheDocument());
+
+    await user.click(screen.getByText('Revise'));
+
+    // The new proposal replaces the old one — rule-phase was reset so Confirm rule is actionable
+    await waitFor(() => expect(screen.getByText('Updated: {subject}')).toBeInTheDocument());
+    expect(screen.getAllByText('Confirm rule')).not.toHaveLength(0);
+  });
+
+  it('renders the category label in a T4 proposal card', async () => {
+    const user = userEvent.setup();
+    mockApi.teachMessage.mockResolvedValueOnce({ response: T4_PROPOSAL_RESPONSE });
+    render(<App />);
+    await openTeachPanel(user);
+
+    await waitFor(() => expect(screen.getByText('Newsletters')).toBeInTheDocument());
+  });
+
+  it('shows a missing-label warning in a T4 proposal card when categoryLabel is absent', async () => {
+    const user = userEvent.setup();
+    mockApi.teachMessage.mockResolvedValueOnce({ response: T4_NO_LABEL_RESPONSE });
+    render(<App />);
+    await openTeachPanel(user);
+
+    await waitFor(() => expect(screen.getByText('missing — required for T4')).toBeInTheDocument());
+  });
+
+  it('confirming a T4 rule passes categoryLabel to saveRule', async () => {
+    const user = userEvent.setup();
+    mockApi.teachMessage.mockResolvedValueOnce({ response: T4_PROPOSAL_RESPONSE });
+    mockApi.saveRule.mockResolvedValueOnce({ ruleId: 'r1', matchingThreads: [] });
+    render(<App />);
+    await openTeachPanel(user);
+    await waitFor(() => expect(screen.getByText('Confirm rule')).toBeInTheDocument());
+
+    await user.click(screen.getByText('Confirm rule'));
+
+    expect(mockApi.saveRule).toHaveBeenCalledWith(
+      expect.objectContaining({ priority: 'T4', categoryLabel: 'Newsletters' }),
+    );
+  });
+
+  it('shows an error and restores the thread list when applying the rule fails', async () => {
+    const user = userEvent.setup();
+    mockApi.teachMessage.mockResolvedValueOnce({ response: PROPOSAL_RESPONSE });
+    mockApi.saveRule.mockResolvedValueOnce({
+      ruleId: 'r1',
+      matchingThreads: [{ threadId: 't1', subject: 'Invoice #1234', sender: 'Acme', date: '', snippet: '' }],
+    });
+    mockApi.applyRule.mockRejectedValueOnce(new Error('Apply failed'));
+    render(<App />);
+    await openTeachPanel(user);
+    await waitFor(() => expect(screen.getByText('Confirm rule')).toBeInTheDocument());
+    await user.click(screen.getByText('Confirm rule'));
+    await waitFor(() => expect(screen.getByText('Apply to 1 thread')).toBeInTheDocument());
+
+    await user.click(screen.getByText('Apply to 1 thread'));
+
+    await waitFor(() => expect(screen.getByText('Apply failed')).toBeInTheDocument());
+    // rulePhase restored to 'threads' — the thread list and Apply button are still present
+    expect(screen.getByText('Apply to 1 thread')).toBeInTheDocument();
+  });
+});
+
+// Open TeachPanel via a T3 item's Wrong → Fix summary path.
+async function openTeachPanelViaFixSummary(user: ReturnType<typeof userEvent.setup>) {
+  await waitFor(() => expect(screen.getByText('T3 Summarized')).toBeInTheDocument());
+  await user.click(screen.getByText('T3 Summarized'));
+  await waitFor(() => expect(screen.getByText('Newsletter: weekly digest')).toBeInTheDocument());
+  await user.click(screen.getByText('Wrong'));
+  await user.click(screen.getByLabelText('Fix digest summary'));
+}
+
+// Open TeachPanel via a T4 item's Wrong → Fix category → input → Confirm path.
+async function openTeachPanelViaFixCategory(user: ReturnType<typeof userEvent.setup>, newCategory: string) {
+  await waitFor(() => expect(screen.getByText('T4 Browse')).toBeInTheDocument());
+  await user.click(screen.getByText('T4 Browse'));
+  await waitFor(() => expect(screen.getByText(/Newsletters/)).toBeInTheDocument());
+  await user.click(screen.getByText(/Newsletters/));
+  await user.click(screen.getByText('Wrong'));
+  await user.click(screen.getByLabelText('Fix category label'));
+  const input = screen.getByLabelText('Correct category');
+  await user.clear(input);
+  await user.type(input, newCategory);
+  await user.keyboard('{Enter}');
+}
+
+describe('TeachPanel Fix summary flow', () => {
+  beforeEach(() => {
+    mockApi.getDecisions.mockResolvedValue({ ...EMPTY, T3: [T3_DECISION] });
+  });
+
+  it('sends the fix-summary userContext to the agent on open', async () => {
+    const user = userEvent.setup();
+    mockApi.teachMessage.mockResolvedValueOnce({ response: 'I will fix the summary.' });
+    render(<App />);
+    await openTeachPanelViaFixSummary(user);
+
+    await waitFor(() => expect(screen.getByText('I will fix the summary.')).toBeInTheDocument());
+    expect(mockApi.teachMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [],
+        threadContext: expect.objectContaining({ subject: 'Weekly Digest', threadId: 't2' }),
+        userContext: expect.stringContaining('digest summary'),
+      }),
+    );
+    // Should mention the correct tier and not say "belongs in"
+    const call = mockApi.teachMessage.mock.calls[0]![0];
+    expect(call.userContext).toContain('T3');
+    expect(call.userContext).not.toContain('belongs in T3');
+  });
+
+  it('confirming the proposed rule saves it via saveRule', async () => {
+    const user = userEvent.setup();
+    mockApi.teachMessage.mockResolvedValueOnce({ response: PROPOSAL_RESPONSE });
+    mockApi.saveRule.mockResolvedValueOnce({ ruleId: 'r1', matchingThreads: [] });
+    render(<App />);
+    await openTeachPanelViaFixSummary(user);
+    await waitFor(() => expect(screen.getByText('Confirm rule')).toBeInTheDocument());
+
+    await user.click(screen.getByText('Confirm rule'));
+
+    await waitFor(() => expect(mockApi.saveRule).toHaveBeenCalled());
+  });
+});
+
+describe('TeachPanel Fix category flow', () => {
+  beforeEach(() => {
+    mockApi.getDecisions.mockResolvedValue({ ...EMPTY, T4: [T4_DECISION] });
+  });
+
+  it('sends the fix-category userContext to the agent on open', async () => {
+    const user = userEvent.setup();
+    mockApi.teachMessage.mockResolvedValueOnce({ response: 'I will fix the category.' });
+    render(<App />);
+    await openTeachPanelViaFixCategory(user, 'Finance');
+
+    await waitFor(() => expect(screen.getByText('I will fix the category.')).toBeInTheDocument());
+    expect(mockApi.teachMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [],
+        threadContext: expect.objectContaining({ subject: 'Weekly Digest', threadId: 't3' }),
+        userContext: expect.stringContaining('Finance'),
+      }),
+    );
+    const call = mockApi.teachMessage.mock.calls[0]![0];
+    expect(call.userContext).toContain('category');
+    expect(call.userContext).toContain('T4');
+  });
+
+  it('confirming the proposed rule saves it via saveRule', async () => {
+    const user = userEvent.setup();
+    mockApi.teachMessage.mockResolvedValueOnce({ response: PROPOSAL_RESPONSE });
+    mockApi.saveRule.mockResolvedValueOnce({ ruleId: 'r1', matchingThreads: [] });
+    render(<App />);
+    await openTeachPanelViaFixCategory(user, 'Finance');
+    await waitFor(() => expect(screen.getByText('Confirm rule')).toBeInTheDocument());
+
+    await user.click(screen.getByText('Confirm rule'));
+
+    await waitFor(() => expect(mockApi.saveRule).toHaveBeenCalled());
   });
 });

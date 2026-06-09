@@ -25,7 +25,7 @@ function HtmlFrame({ html }: { html: string }) {
     <iframe
       ref={iframeRef}
       srcDoc={srcDoc}
-      sandbox="allow-scripts allow-popups"
+      sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
       className="w-full border-0 block"
       style={{ minHeight: '100px' }}
       title="email-body"
@@ -81,6 +81,7 @@ export function ThreadDetail({ threadId }: { threadId: string }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- standard loading state initialized immediately before the async fetch
     setLoading(true);
     setError(null);
     setThread(null);

@@ -1,15 +1,22 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from './api';
-import type { Thread, DecisionWithThread, MatchingThread } from './api';
-import { ThreadDetail } from './components/ThreadDetail';
+import type { Thread, DecisionWithThread, MatchingThread, RuleWithSuggestion } from './api';
 import { DigestPanel } from './components/DigestPanel';
-import { parseSender, formatDate } from './utils/text';
-import { dedupeDecisions } from './utils/decisions';
+import { RuleHealthPanel } from './components/RuleHealthPanel';
+import { dedupeDecisions, sortTierItems } from './utils/decisions';
 import type { DecisionsState } from './utils/decisions';
 import { parseProposal, describeTrigger } from './utils/rules';
 import type { ProposedRule } from './utils/rules';
 
 type AuthState = 'loading' | 'unauthenticated' | 'authenticated';
+
+// Envelope artwork copied verbatim from public/favicon.svg so the dynamic
+// unread-badge favicon is pixel-identical to the static one shown before login.
+// IMPORTANT: if you change the envelope, update BOTH this constant and
+// public/favicon.svg — they intentionally duplicate the same artwork.
+// Nested in its own 0 0 48 31.6 viewBox so it fills the top of the 32x32 icon,
+// leaving the bottom-right for the count badge drawn below.
+const ENVELOPE_SVG = `<svg x="0" y="0" width="32" height="21" viewBox="0 0 48 31.6"><defs><clipPath id="cde676591f"><path d="M 0.488281 0 L 47.507812 0 L 47.507812 31.59375 L 0.488281 31.59375 Z M 0.488281 0 " clip-rule="nonzero"/></clipPath><clipPath id="131108836b"><path d="M 4 3 L 44 3 L 44 31.59375 L 4 31.59375 Z M 4 3 " clip-rule="nonzero"/></clipPath></defs><g clip-path="url(#cde676591f)"><path fill="#00d3e8" d="M 2.441406 0 L 45.558594 0 C 45.804688 0 46.039062 0.046875 46.265625 0.140625 C 46.492188 0.234375 46.691406 0.367188 46.867188 0.542969 C 47.039062 0.714844 47.171875 0.914062 47.265625 1.140625 C 47.359375 1.367188 47.40625 1.605469 47.40625 1.847656 L 47.40625 29.523438 C 47.40625 29.769531 47.359375 30.007812 47.265625 30.234375 C 47.171875 30.457031 47.039062 30.660156 46.867188 30.832031 C 46.691406 31.003906 46.492188 31.140625 46.265625 31.234375 C 46.039062 31.328125 45.804688 31.375 45.558594 31.375 L 2.441406 31.375 C 2.195312 31.375 1.960938 31.328125 1.734375 31.234375 C 1.507812 31.140625 1.308594 31.003906 1.132812 30.832031 C 0.960938 30.660156 0.828125 30.457031 0.734375 30.234375 C 0.640625 30.007812 0.59375 29.769531 0.59375 29.523438 L 0.59375 1.847656 C 0.59375 1.605469 0.640625 1.367188 0.734375 1.140625 C 0.828125 0.914062 0.960938 0.714844 1.132812 0.542969 C 1.308594 0.367188 1.507812 0.234375 1.734375 0.140625 C 1.960938 0.046875 2.195312 0 2.441406 0 Z M 2.441406 0 " fill-opacity="1" fill-rule="nonzero"/></g><g clip-path="url(#131108836b)"><path fill="#001b3d" d="M 4.855469 3.816406 L 43.140625 3.816406 L 43.140625 31.375 L 4.855469 31.375 Z M 4.855469 3.816406 " fill-opacity="1" fill-rule="nonzero"/></g><path fill="#62e9f7" d="M 46.835938 0.515625 L 26.464844 18.738281 C 26.128906 19.042969 25.746094 19.273438 25.320312 19.4375 C 24.894531 19.601562 24.453125 19.679688 24 19.679688 C 23.546875 19.679688 23.105469 19.601562 22.679688 19.4375 C 22.253906 19.273438 21.871094 19.042969 21.535156 18.738281 L 1.167969 0.515625 C 1.523438 0.167969 1.945312 0 2.441406 0 L 45.558594 0 C 46.054688 -0.00390625 46.480469 0.167969 46.835938 0.515625 Z M 46.835938 0.515625 " fill-opacity="1" fill-rule="nonzero"/><path fill="#001b3d" d="M 6.988281 0 L 24 15.222656 L 41.011719 0 Z M 6.988281 0 " fill-opacity="1" fill-rule="nonzero"/></svg>`;
 
 function updateFavicon(count: number): void {
   const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
@@ -21,9 +28,7 @@ function updateFavicon(count: number): void {
 
   const fontSize = 23;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="22" rx="5" fill="#00d3e8"/>
-  <rect x="4" y="0" width="24" height="22" rx="2" fill="#001b3d"/>
-  <path d="M0 0 L16 9 L32 0" fill="none" stroke="#62e9f7" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  ${ENVELOPE_SVG}
   <rect x="${30-textLength}" y="12" width="${textLength+2}" height="20" rx="2" fill="#661414"/>
   <text x="31" y="22" text-anchor="end" dominant-baseline="central" fill="white" font-family="system-ui,sans-serif" font-weight="bold"
    font-size="${fontSize}" textLength="${textLength}" lengthAdjust="spacingAndGlyphs">${label}</text>
@@ -94,53 +99,38 @@ const DIGEST_PANELS = [
 ];
 
 function MainApp() {
-  const [threads, setThreads] = useState<Thread[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [nextPageToken, setNextPageToken] = useState<string | undefined>();
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [teachThread, setTeachThread] = useState<Thread | null>(null);
-  const [decisions, setDecisions] = useState<DecisionsState>({ T1: [], T2: [], T3: [], T4: [] });
-  const [openTier, setOpenTier] = useState<'T1' | 'T2' | 'T3' | 'T4' | null>('T1');
+  const [teachContext, setTeachContext] = useState<{ thread: Thread; correctTier?: string; decisionId?: string; fixSummary?: boolean; correctCategory?: string } | null>(null);
+  const [decisions, setDecisions] = useState<DecisionsState>({ T1: [], T2: [], T3: [], T4: [], T5: [] });
+  const [openTier, setOpenTier] = useState<'T1' | 'T2' | 'T3' | 'T4' | 'T5' | null>('T1');
+  const [refreshing, setRefreshing] = useState(false);
+  const [suggestions, setSuggestions] = useState<RuleWithSuggestion[]>([]);
 
-  useEffect(() => {
-    api.getThreads({ undecided: true })
-      .then(({ threads, nextPageToken }) => {
-        setThreads(threads);
-        setNextPageToken(nextPageToken);
-      })
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
+  const loadDecisions = useCallback(() => {
     api.getDecisions().then((d) => setDecisions(dedupeDecisions(d))).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      api.getDecisions().then((d) => setDecisions(dedupeDecisions(d))).catch(() => {});
-    }, 60_000);
-    return () => clearInterval(id);
+  const loadSuggestions = useCallback(() => {
+    api.getRulesWithSuggestions().then(setSuggestions).catch(() => {});
   }, []);
 
-  function loadMore() {
-    if (!nextPageToken || loadingMore) return;
-    setLoadingMore(true);
-    api.getThreads({ pageToken: nextPageToken, undecided: true })
-      .then(({ threads: more, nextPageToken: next }) => {
-        setThreads((prev) => [...prev, ...more]);
-        setNextPageToken(next);
-      })
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoadingMore(false));
-  }
+  useEffect(() => { loadDecisions(); }, [loadDecisions]);
+  useEffect(() => { loadSuggestions(); }, [loadSuggestions]);
+
+  useEffect(() => {
+    const id = setInterval(loadDecisions, 60_000);
+    return () => clearInterval(id);
+  }, [loadDecisions]);
+
+  useEffect(() => {
+    const id = setInterval(loadSuggestions, 60_000);
+    return () => clearInterval(id);
+  }, [loadSuggestions]);
 
   function removeDecision(decisionId: string) {
     setDecisions((prev) => {
       const result = { ...prev };
-      for (const tier of ['T1', 'T2', 'T3', 'T4'] as const) {
+      for (const tier of ['T1', 'T2', 'T3', 'T4', 'T5'] as const) {
         if (result[tier].some((d) => d.decisionId === decisionId)) {
           result[tier] = result[tier].filter((d) => d.decisionId !== decisionId);
           return result;
@@ -148,21 +138,6 @@ function MainApp() {
       }
       return prev;
     });
-  }
-
-  function prependThreadIfMissing(detail: import('./api').ThreadDetail) {
-    const lastMsg = detail.messages[detail.messages.length - 1];
-    if (!lastMsg) return;
-    const tempThread: Thread = {
-      id: detail.id,
-      snippet: lastMsg.snippet,
-      subject: lastMsg.subject,
-      sender: lastMsg.sender,
-      date: lastMsg.date,
-      isUnread: lastMsg.isUnread,
-      unreadCount: detail.messages.filter((m) => m.isUnread).length,
-    };
-    setThreads((prev) => (prev.some((t) => t.id === detail.id) ? prev : [tempThread, ...prev]));
   }
 
   function handleConfirm(decisionId: string) {
@@ -186,7 +161,8 @@ function MainApp() {
     api.doneDecision(decisionId).catch(() => {});
   }
 
-  function handleFollowup(decisionId: string) {
+  function handleFollowup(decisionId: string, note?: string) {
+    const trimmedNote = note?.trim();
     setDecisions((prev) => {
       let found: DecisionWithThread | undefined;
       let fromTier: 'T3' | 'T4' | undefined;
@@ -198,10 +174,18 @@ function MainApp() {
       return {
         ...prev,
         [fromTier]: prev[fromTier].filter((d) => d.decisionId !== decisionId),
-        T2: [{ ...found, userFlagged: true, priority: 'T2' }, ...prev.T2],
+        T2: sortTierItems([
+          {
+            ...found,
+            userFlagged: true,
+            priority: 'T2',
+            digestSummary: trimmedNote || found.digestSummary,
+          },
+          ...prev.T2,
+        ]),
       };
     });
-    api.followupDecision(decisionId).catch(() => {});
+    api.followupDecision(decisionId, trimmedNote).catch(() => {});
   }
 
   function handleConfirmAll(decisionIds: string[], tier: string) {
@@ -224,26 +208,42 @@ function MainApp() {
     api.confirmAll(decisionIds, tier).catch(() => {});
   }
 
-  async function handleMisclassified(decisionId: string, threadId: string) {
-    removeDecision(decisionId);
-    api.misclassifiedDecision(decisionId).catch(() => {});
-    if (!threads.some((t) => t.id === threadId)) {
-      try {
-        const detail = await api.getThread(threadId);
-        prependThreadIfMissing(detail);
-      } catch {}
-    }
-  }
-
-  const handleTeachClose = useCallback(() => setTeachThread(null), []);
-  const handleDecisionsRefresh = useCallback(() => {
-    api.getDecisions().then((d) => setDecisions(dedupeDecisions(d))).catch(() => {});
-  }, []);
-
-  const decidedThreadIds = new Set(
-    [...decisions.T1, ...decisions.T2, ...decisions.T3, ...decisions.T4].map((d) => d.threadId),
+  const handleOpenTeach = useCallback(
+    (item: DecisionWithThread, opts: { correctTier: string; fixSummary?: boolean; correctCategory?: string }) => {
+      const thread: Thread = {
+        id: item.threadId,
+        subject: item.thread.subject,
+        sender: item.thread.sender,
+        date: item.thread.date,
+        snippet: item.thread.snippet,
+        isUnread: item.thread.unreadCount > 0,
+        unreadCount: item.thread.unreadCount,
+      };
+      setTeachContext({ thread, correctTier: opts.correctTier, decisionId: item.decisionId, fixSummary: opts.fixSummary, correctCategory: opts.correctCategory });
+    },
+    [],
   );
-  const inboxThreads = threads.filter((t) => !decidedThreadIds.has(t.id));
+
+  const handleTeachClose = useCallback(() => setTeachContext(null), []);
+
+  const handleAcceptSuggestion = useCallback((ruleId: string) => {
+    setSuggestions((prev) => prev.filter((s) => s.id !== ruleId));
+    api.acceptSuggestion(ruleId).catch(() => loadSuggestions());
+  }, [loadSuggestions]);
+
+  const handleDismissSuggestion = useCallback((ruleId: string) => {
+    setSuggestions((prev) => prev.filter((s) => s.id !== ruleId));
+    api.dismissSuggestion(ruleId).catch(() => loadSuggestions());
+  }, [loadSuggestions]);
+
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    setError(null);
+    api.getDecisions()
+      .then((d) => setDecisions(dedupeDecisions(d)))
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setRefreshing(false));
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
@@ -251,7 +251,36 @@ function MainApp() {
 
         <header className="flex items-center justify-between border-b border-gray-800 pb-4">
           <h1 className="text-base font-semibold tracking-tight text-gray-100">Email OS</h1>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            aria-label="Refresh"
+            title="Refresh"
+            className="text-gray-400 hover:text-gray-200 disabled:text-gray-600 disabled:cursor-not-allowed transition-colors"
+          >
+            <svg
+              className={refreshing ? 'animate-spin' : ''}
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+              <path d="M21 3v5h-5" />
+            </svg>
+          </button>
         </header>
+
+        <RuleHealthPanel
+          suggestions={suggestions}
+          onAccept={handleAcceptSuggestion}
+          onDismiss={handleDismissSuggestion}
+        />
 
         {/* Digest */}
         <section className="space-y-3">
@@ -269,53 +298,39 @@ function MainApp() {
                 onConfirm={handleConfirm}
                 onDone={handleDone}
                 onFollowup={handleFollowup}
-                onMisclassified={handleMisclassified}
+                onOpenTeach={handleOpenTeach}
                 onConfirmAll={handleConfirmAll}
-                onViewThread={() => {}}
               />
             ))}
+            {decisions.T5.length > 0 && (
+              <DigestPanel
+                tier="T5"
+                label="T5 Unclassified"
+                accent="border-dashed border-amber-600/40 bg-amber-500/5"
+                items={decisions.T5}
+                isOpen={openTier === 'T5'}
+                onToggle={() => setOpenTier((prev) => (prev === 'T5' ? null : 'T5'))}
+                onConfirm={handleConfirm}
+                onDone={handleDone}
+                onFollowup={handleFollowup}
+                onOpenTeach={handleOpenTeach}
+                onConfirmAll={handleConfirmAll}
+              />
+            )}
           </div>
+          {error && <p className="text-sm text-red-400 py-2">Error: {error}</p>}
         </section>
-
-        {/* Thread list */}
-        <section className="space-y-3">
-          <SectionLabel>Inbox{!loading ? ` (${inboxThreads.length})` : ''}</SectionLabel>
-          {loading && <p className="text-sm text-gray-600 py-2">Loading threads…</p>}
-          {error   && <p className="text-sm text-red-400 py-2">Error: {error}</p>}
-          {!loading && !error && inboxThreads.length === 0 && (
-            <p className="text-sm text-gray-600 py-2">No threads found.</p>
-          )}
-          {inboxThreads.length > 0 && (
-            <div className="rounded-lg border border-gray-800 overflow-clip divide-y divide-gray-800">
-              {inboxThreads.map((thread) => (
-                <ThreadRow
-                  key={thread.id}
-                  thread={thread}
-                  expanded={expandedId === thread.id}
-                  onToggle={() => setExpandedId(expandedId === thread.id ? null : thread.id)}
-                  onTeach={(t) => setTeachThread(t)}
-                />
-              ))}
-              {nextPageToken && (
-                <button
-                  onClick={loadMore}
-                  disabled={loadingMore}
-                  className="w-full px-4 py-3 text-sm text-gray-400 hover:text-gray-200 hover:bg-gray-900/60 disabled:text-gray-600 disabled:cursor-not-allowed transition-colors text-center bg-gray-900/20 tracking-wider"
-                >
-                  {loadingMore ? 'LOADING…' : 'LOAD MORE…'}
-                </button>
-              )}
-            </div>
-          )}
-        </section>
-
 
       </div>
 
       <TeachPanel
-        thread={teachThread}
+        thread={teachContext?.thread ?? null}
+        correctTier={teachContext?.correctTier}
+        decisionId={teachContext?.decisionId}
+        fixSummary={teachContext?.fixSummary}
+        correctCategory={teachContext?.correctCategory}
         onClose={handleTeachClose}
-        onDecisionsRefresh={handleDecisionsRefresh}
+        onDecisionsRefresh={loadDecisions}
       />
     </div>
   );
@@ -337,13 +352,28 @@ type RulePhase = 'pending' | 'saving' | 'threads' | 'applying' | 'done' | 'no-ma
 
 function TeachPanel({
   thread,
+  correctTier,
+  decisionId,
+  fixSummary,
+  correctCategory,
   onClose,
   onDecisionsRefresh,
 }: {
   thread: Thread | null;
+  correctTier?: string;
+  decisionId?: string;
+  fixSummary?: boolean;
+  correctCategory?: string;
   onClose: () => void;
   onDecisionsRefresh: () => void;
 }) {
+  const userContext = fixSummary
+    ? `The tier (${correctTier}) is correct but the digest summary for this thread is wrong. Identify the rule that classified this thread and propose an updated digestSummaryTemplate. Skip clarifying questions and immediately propose a fix.`
+    : correctCategory
+    ? `The tier (${correctTier}) is correct but the category label is wrong — the correct category is "${correctCategory}". Identify the rule that classified this thread and propose updating only the categoryLabel to "${correctCategory}". Skip clarifying questions and immediately propose this change.`
+    : correctTier
+    ? `The user has indicated this thread belongs in ${correctTier}. Skip clarifying questions and immediately propose a rule with a brief explanation.`
+    : undefined;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -358,6 +388,7 @@ function TeachPanel({
 
   useEffect(() => {
     if (!thread) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting all state when the active thread changes is intentional cleanup on dep change
       setMessages([]);
       setInput('');
       setError(null);
@@ -377,11 +408,12 @@ function TeachPanel({
     api.teachMessage({
       messages: [],
       threadContext: { subject: thread.subject, sender: thread.sender, snippet: thread.snippet, date: thread.date, threadId: thread.id },
+      userContext,
     })
       .then(({ response }) => setMessages([{ role: 'assistant', content: response }]))
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [thread]);
+  }, [thread, userContext]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -405,6 +437,7 @@ function TeachPanel({
       const { response } = await api.teachMessage({
         messages: next,
         threadContext: { subject: thread.subject, sender: thread.sender, snippet: thread.snippet, date: thread.date, threadId: thread.id },
+        userContext,
       });
       setMessages([...next, { role: 'assistant', content: response }]);
       if (parseProposal(response).proposal) {
@@ -438,11 +471,15 @@ function TeachPanel({
       ? proposal.trigger
       : JSON.stringify(proposal.trigger);
     try {
+      // When re-teaching a misclassified item, archive the old decision first so
+      // the thread is free for the new rule to match and re-classify on apply.
+      if (decisionId) await api.misclassifiedDecision(decisionId);
       const { ruleId, matchingThreads: threads } = await api.saveRule({
         existingRuleId: typeof proposal.existingRuleId === 'string' ? proposal.existingRuleId : undefined,
         trigger,
         action: proposal.action,
         priority: proposal.priority,
+        categoryLabel: proposal.categoryLabel,
         digestSummaryTemplate: proposal.digestSummaryTemplate,
         notes: proposal.notes,
       });
@@ -532,6 +569,15 @@ function TeachPanel({
                         <p className="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Digest template</p>
                         <p className="text-xs text-gray-300 italic">{proposal.digestSummaryTemplate}</p>
                       </div>
+                      {proposal.priority === 'T4' && (
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Category</p>
+                          {proposal.categoryLabel
+                            ? <p className="text-xs text-gray-300">{proposal.categoryLabel}</p>
+                            : <p className="text-xs text-red-400">missing — required for T4</p>
+                          }
+                        </div>
+                      )}
                       {proposal.notes && (
                         <div>
                           <p className="text-xs text-gray-500 uppercase tracking-wider mb-0.5">Notes</p>
@@ -674,81 +720,3 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function TeachButton({ onClick }: { onClick: (e: React.MouseEvent) => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="shrink-0 text-xs text-gray-500 hover:text-gray-300 px-2 py-1 rounded border border-gray-700 hover:border-gray-600 transition-colors"
-    >
-      Teach
-    </button>
-  );
-}
-
-function ThreadRow({
-  thread,
-  expanded,
-  onToggle,
-  onTeach,
-}: {
-  thread: Thread;
-  expanded: boolean;
-  onToggle: () => void;
-  onTeach: (thread: Thread) => void;
-}) {
-  const rowRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (expanded && rowRef.current) {
-      rowRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, [expanded]);
-
-  return (
-    <div ref={rowRef}>
-      <div
-        className={`sticky top-0 z-10 ${expanded ? 'bg-gray-950' : ''}`}
-      >
-        <div
-          className={`flex items-center gap-2 px-4 py-3 hover:bg-gray-900/60 transition-colors ${
-            thread.isUnread ? 'bg-gray-900/40' : ''
-          } ${expanded ? 'border-b border-gray-800' : ''}`}
-        >
-          <div
-            className="flex-1 min-w-0 cursor-pointer"
-            onClick={onToggle}
-          >
-            <div className="flex items-baseline justify-between gap-3 min-w-0">
-              <span className="flex items-baseline gap-1.5 truncate min-w-0">
-                <span className={`text-sm truncate ${thread.isUnread ? 'font-semibold text-gray-100' : 'text-gray-300'}`}>
-                  {parseSender(thread.sender)}
-                </span>
-                {thread.unreadCount > 1 && (
-                  <span className="text-xs font-semibold text-blue-400 shrink-0">{thread.unreadCount}</span>
-                )}
-              </span>
-              <span className="text-xs text-gray-600 whitespace-nowrap shrink-0">
-                {formatDate(thread.date)}
-              </span>
-            </div>
-            <div className={`text-sm truncate mt-0.5 ${thread.isUnread ? 'text-gray-200' : 'text-gray-400'}`}>
-              {thread.subject}
-            </div>
-            {thread.snippet && (
-              <div className="text-xs text-gray-600 truncate mt-0.5">{thread.snippet}</div>
-            )}
-          </div>
-          <TeachButton onClick={(e) => { e.stopPropagation(); onTeach(thread); }} />
-        </div>
-      </div>
-      {expanded && (
-        <div className="bg-gray-900">
-          <ThreadDetail threadId={thread.id} />
-          <div className="px-4 py-3 border-t border-gray-800 flex justify-end">
-            <TeachButton onClick={() => onTeach(thread)} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}

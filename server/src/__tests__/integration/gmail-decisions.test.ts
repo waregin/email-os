@@ -111,6 +111,18 @@ describe('GET /api/gmail/decisions', () => {
     expect(res.body.T4).toHaveLength(1);
   });
 
+  it('groups T5 decisions in their own bucket, not lumped into T4', async () => {
+    await createDecision('th-t4-only', 'T4');
+    await createDecision('th-t5-only', 'T5');
+
+    const res = await agent.get('/api/gmail/decisions');
+    expect(res.status).toBe(200);
+    const t5Ids = (res.body.T5 as Array<{ threadId: string }>).map((d) => d.threadId);
+    const t4Ids = (res.body.T4 as Array<{ threadId: string }>).map((d) => d.threadId);
+    expect(t5Ids).toContain('th-t5-only');
+    expect(t4Ids).not.toContain('th-t5-only');
+  });
+
   it('excludes archived decisions', async () => {
     await prisma.triageDecision.create({
       data: { threadId: 'archived-th', userId, priority: 'T1', digestSummary: 'x', archivedAt: new Date() },
@@ -144,6 +156,18 @@ describe('GET /api/gmail/decisions', () => {
     const decision = res.body.T3[0] as { thread: { messageCount: number; unreadCount: number } };
     expect(decision.thread.messageCount).toBe(2);
     expect(decision.thread.unreadCount).toBe(1);
+  });
+
+  it('does not sort T4 decisions server-side (client handles T4 ordering via buildGroups)', async () => {
+    for (const [id, date] of [['th-t4-a', '2024-06-01'], ['th-t4-b', '2024-01-01']]) {
+      await prisma.threadCache.create({
+        data: { id, userId, subject: id, sender: 's@x.com', snippet: '', date, labelIds: '[]' },
+      });
+      await createDecision(id, 'T4');
+    }
+
+    const res = await agent.get('/api/gmail/decisions');
+    expect((res.body.T4 as unknown[]).length).toBe(2);
   });
 });
 
@@ -247,6 +271,36 @@ describe('POST /api/gmail/decisions/:id/followup', () => {
 
     const call = mockThreadsModify.mock.calls[0]![0] as { requestBody: { removeLabelIds: string[] } };
     expect(call.requestBody.removeLabelIds).toEqual(['UNREAD']);
+  });
+
+  it('updates digestSummary to the note when one is provided', async () => {
+    const d = await createDecision('th-followup-note', 'T3');
+    const res = await agent
+      .post(`/api/gmail/decisions/${d.id}/followup`)
+      .send({ note: 'Reply with pricing by Friday' });
+    expect(res.status).toBe(200);
+
+    const updated = await prisma.triageDecision.findUnique({ where: { id: d.id } });
+    expect(updated!.digestSummary).toBe('Reply with pricing by Friday');
+    expect(updated!.priority).toBe('T2');
+  });
+
+  it('leaves digestSummary unchanged when no note is provided', async () => {
+    const d = await createDecision('th-followup-nonote', 'T3');
+    const res = await agent.post(`/api/gmail/decisions/${d.id}/followup`).send({});
+    expect(res.status).toBe(200);
+
+    const updated = await prisma.triageDecision.findUnique({ where: { id: d.id } });
+    expect(updated!.digestSummary).toBe(d.digestSummary);
+  });
+
+  it('treats a blank/whitespace note as no note', async () => {
+    const d = await createDecision('th-followup-blank', 'T3');
+    const res = await agent.post(`/api/gmail/decisions/${d.id}/followup`).send({ note: '   ' });
+    expect(res.status).toBe(200);
+
+    const updated = await prisma.triageDecision.findUnique({ where: { id: d.id } });
+    expect(updated!.digestSummary).toBe(d.digestSummary);
   });
 
   it('returns 500 when a database error occurs', async () => {

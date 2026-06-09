@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractAddress, extractDomain, extractBody } from '../../utils/thread-cache';
+import { extractAddress, extractDomain, extractSenderName, normalizeListId, extractBody } from '../../utils/thread-cache';
 
 describe('extractAddress', () => {
   it('parses "Name <email>" format', () => {
@@ -21,6 +21,42 @@ describe('extractAddress', () => {
 
   it('handles empty string', () => {
     expect(extractAddress('')).toBe('');
+  });
+});
+
+describe('extractSenderName', () => {
+  it('extracts the display name from "Name <email>" format', () => {
+    expect(extractSenderName('Alice Smith <alice@example.com>')).toBe('Alice Smith');
+  });
+
+  it('returns empty string when there is no display name', () => {
+    expect(extractSenderName('alice@example.com')).toBe('');
+  });
+
+  it('trims surrounding whitespace from the display name', () => {
+    expect(extractSenderName('  Alice  <alice@example.com>')).toBe('Alice');
+  });
+
+  it('handles empty string', () => {
+    expect(extractSenderName('')).toBe('');
+  });
+});
+
+describe('normalizeListId', () => {
+  it('strips angle brackets from List-ID header value', () => {
+    expect(normalizeListId('<mylist.example.com>')).toBe('mylist.example.com');
+  });
+
+  it('lowercases the result', () => {
+    expect(normalizeListId('<MyList.Example.COM>')).toBe('mylist.example.com');
+  });
+
+  it('returns value as-is (lowercased) when no angle brackets', () => {
+    expect(normalizeListId('mylist.example.com')).toBe('mylist.example.com');
+  });
+
+  it('handles empty string', () => {
+    expect(normalizeListId('')).toBe('');
   });
 });
 

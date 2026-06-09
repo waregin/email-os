@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { matchThread, TRIGGER_TYPES } from './matcher';
 import type { ThreadData } from './matcher';
 import { buildDigestSummary } from './summarizer';
-import { extractAddress, extractDomain, resolveThreadMetadata } from './utils/thread-cache';
+import { extractAddress, extractDomain, extractSenderName, resolveThreadMetadata } from './utils/thread-cache';
 import { buildGmailClient } from './utils/auth';
 
 export const agentRouter = Router();
@@ -56,6 +56,8 @@ Match on sender or recipient (primary):
 - {"type":"sender_domain","domain":"example.com"}
 - {"type":"sender","sender":"user@example.com"}
 - {"type":"self_sent"}
+- {"type":"sender_name_contains","pattern":"John Smith"}  ← fires if sender display name contains this string (case-insensitive)
+- {"type":"list_id","listId":"mylist.example.com"}  ← fires if the email's List-ID header matches exactly (reliable mailing list identity)
 - {"type":"address","toAddress":"list@example.com"}
 
 Optional secondary filter (sender_domain / sender / self_sent only):
@@ -68,9 +70,11 @@ Allowed fields — no others will be saved:
   sender_domain  →  type, domain, subjectOrSnippetContainsAny, subjectOrSnippetContainsAll
   sender         →  type, sender, subjectOrSnippetContainsAny, subjectOrSnippetContainsAll
   self_sent      →  type, subjectOrSnippetContainsAny, subjectOrSnippetContainsAll
-  address        →  type, toAddress
+  sender_name_contains  →  type, pattern
+  list_id               →  type, listId
+  address               →  type, toAddress
 
-When modifying an existing rule, always include "existingRuleId" so the system updates it instead of creating a duplicate.
+Before proposing a new rule, review the existing rules listed above. If an existing rule could be modified to handle this case, include its id as "existingRuleId" and update it rather than creating a duplicate. Never propose a rule whose trigger would match a strict subset of threads already caught by a confirmed rule at the same or higher priority.
 After the RULE_PROPOSAL block you may continue with a brief explanation, but the JSON block must be valid and complete.`;
 
 const STARTER_MESSAGE: Anthropic.MessageParam = { role: 'user', content: 'Hi' };
@@ -102,7 +106,7 @@ agentRouter.post('/teach', async (req, res) => {
     const userId = req.session.userId;
     if (userId) {
       const existingRules = await prisma.triageRule.findMany({
-        where: { userId },
+        where: { userId, isActive: true },
         orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
       });
       if (existingRules.length > 0) {
@@ -123,7 +127,7 @@ agentRouter.post('/teach', async (req, res) => {
     const completion = await anthropic.messages.create({
       model,
       max_tokens: 1024,
-      system: systemPrompt,
+      system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       messages: apiMessages,
     });
 
@@ -153,6 +157,8 @@ const triggerSchema = z.discriminatedUnion('type', [
   triggerBaseSchema.extend({ type: z.literal(TRIGGER_TYPES.SENDER_DOMAIN), domain: z.string() }),
   triggerBaseSchema.extend({ type: z.literal(TRIGGER_TYPES.SENDER), sender: z.string() }),
   triggerBaseSchema.extend({ type: z.literal(TRIGGER_TYPES.SELF_SENT) }),
+  z.object({ type: z.literal(TRIGGER_TYPES.SENDER_NAME_CONTAINS), pattern: z.string().min(1) }),
+  z.object({ type: z.literal(TRIGGER_TYPES.LIST_ID), listId: z.string().min(1) }),
   z.object({ type: z.literal(TRIGGER_TYPES.SUBJECT_OR_SNIPPET_CONTAINS_ANY), patterns: z.array(z.string()).min(1) }),
   z.object({ type: z.literal(TRIGGER_TYPES.SUBJECT_OR_SNIPPET_CONTAINS_ALL), patterns: z.array(z.string()).min(1) }),
   z.object({ type: z.literal(TRIGGER_TYPES.ADDRESS), toAddress: z.string() }),
@@ -179,31 +185,72 @@ agentRouter.post('/rules', async (req, res) => {
         action: string;
         priority: string;
         categoryLabel?: string;
-        digestSummaryTemplate: string;
+        digestSummaryTemplate?: string;
         notes?: string;
       };
     };
 
     const normalizedTrigger = normalizeTrigger(rule.trigger);
+    const isT4 = rule.priority === 'T4';
+    // digestSummaryTemplate is '' for T4 (column is non-nullable; null requires a schema migration)
+    const template = isT4 ? '' : (rule.digestSummaryTemplate?.trim() ?? '');
+
+    if (!isT4 && !template) {
+      res.status(400).json({ error: 'digestSummaryTemplate is required for T1/T2/T3 rules' });
+      return;
+    }
+
     const ruleData = {
       trigger: normalizedTrigger,
       action: rule.action,
       priority: rule.priority,
-      categoryLabel: rule.categoryLabel ?? null,
-      digestSummaryTemplate: rule.digestSummaryTemplate,
+      categoryLabel: isT4 ? (rule.categoryLabel ?? null) : null,
+      digestSummaryTemplate: template,
       notes: rule.notes ?? null,
     };
 
     let savedRule;
     if (rule.existingRuleId) {
-      const existing = await prisma.triageRule.findUnique({ where: { id: rule.existingRuleId } });
-      if (!existing || existing.userId !== userId) {
+      const referenced = await prisma.triageRule.findUnique({ where: { id: rule.existingRuleId } });
+
+      // Cross-user access is always a hard 404 (security check).
+      if (referenced && referenced.userId !== userId) {
         res.status(404).json({ error: 'Rule not found' });
         return;
       }
-      savedRule = await prisma.triageRule.update({ where: { id: rule.existingRuleId }, data: ruleData });
+
+      // If the agent proposed a stale existingRuleId — e.g. after a no-matches retry
+      // where the rule was already replaced earlier in the same conversation — walk the
+      // succession chain to find the current active version and update that instead.
+      let existing = referenced?.isActive ? referenced : null;
+      if (referenced && !existing) {
+        let cursor = referenced.id;
+        for (let hops = 0; hops < 5; hops++) {
+          const child = await prisma.triageRule.findFirst({
+            where: { parentId: cursor, userId },
+            orderBy: { createdAt: 'desc' },
+          });
+          if (!child) break;
+          if (child.isActive) { existing = child; break; }
+          cursor = child.id;
+        }
+      }
+
+      if (existing) {
+        // Audit trail: deactivate the old version and create a new one pointing back to it
+        // rather than mutating in place, so the rule's history is preserved.
+        // A human went through /teach to confirm this edit, so the new version is always
+        // 'taught' — even when the predecessor was an ai_guess (which also bumps its priority rank).
+        await prisma.triageRule.update({ where: { id: existing.id }, data: { isActive: false } });
+        savedRule = await prisma.triageRule.create({
+          data: { userId, source: 'taught', parentId: existing.id, ...ruleData },
+        });
+      } else {
+        // No active rule found for the given ID (hallucinated or fully orphaned chain) — create new.
+        savedRule = await prisma.triageRule.create({ data: { userId, source: 'taught', ...ruleData } });
+      }
     } else {
-      savedRule = await prisma.triageRule.create({ data: { userId, source: 'agent', ...ruleData } });
+      savedRule = await prisma.triageRule.create({ data: { userId, source: 'taught', ...ruleData } });
     }
 
     const gmailCtx = await buildGmailClientForUser(userId);
@@ -241,7 +288,7 @@ agentRouter.post('/rules', async (req, res) => {
       if (!raw.id) continue;
       if (decidedThreadIds.has(raw.id)) continue;
 
-      const { subject, sender, snippet, date, labelIds, toAddresses } =
+      const { subject, sender, snippet, date, labelIds, toAddresses, listId } =
         await resolveThreadMetadata(gmail, raw.id, userId, raw.snippet ?? '');
 
       const senderAddress = extractAddress(sender);
@@ -253,6 +300,8 @@ agentRouter.post('/rules', async (req, res) => {
         sender,
         senderAddress,
         senderDomain,
+        senderName: extractSenderName(sender),
+        listId,
         toAddresses,
         snippet,
         labelIds,
@@ -280,7 +329,7 @@ agentRouter.post('/rules/:ruleId/apply', async (req, res) => {
     const { threadIds } = req.body as { threadIds: string[] };
 
     const rule = await prisma.triageRule.findUnique({ where: { id: ruleId } });
-    if (!rule || rule.userId !== userId) {
+    if (!rule || rule.userId !== userId || !rule.isActive) {
       res.status(404).json({ error: 'Rule not found' });
       return;
     }
@@ -344,5 +393,104 @@ agentRouter.post('/rules/:ruleId/apply', async (req, res) => {
     res.json({ ok: true, applied });
   } catch {
     res.status(500).json({ error: 'Failed to apply rule' });
+  }
+});
+
+agentRouter.get('/rules/with-suggestions', async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    if (!userId) { res.status(401).json({ error: 'Not authenticated' }); return; }
+
+    const rules = await prisma.triageRule.findMany({
+      where: { userId, isActive: true, pendingSuggestion: { not: null } },
+      select: {
+        id: true,
+        trigger: true,
+        priority: true,
+        categoryLabel: true,
+        digestSummaryTemplate: true,
+        notes: true,
+        source: true,
+        pendingSuggestion: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    res.json(rules);
+  } catch {
+    res.status(500).json({ error: 'Failed to fetch rules with suggestions' });
+  }
+});
+
+agentRouter.post('/rules/:ruleId/suggestion/accept', async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    if (!userId) { res.status(401).json({ error: 'Not authenticated' }); return; }
+
+    const { ruleId } = req.params;
+    const rule = await prisma.triageRule.findUnique({ where: { id: ruleId } });
+    if (!rule || rule.userId !== userId || !rule.isActive || !rule.pendingSuggestion) {
+      res.status(404).json({ error: 'Rule or suggestion not found' });
+      return;
+    }
+
+    let suggestion: Record<string, unknown>;
+    try {
+      suggestion = JSON.parse(rule.pendingSuggestion) as Record<string, unknown>;
+    } catch {
+      res.status(400).json({ error: 'Invalid suggestion JSON' });
+      return;
+    }
+
+    const newPriority = String(suggestion.priority ?? rule.priority);
+    const isNewT4 = newPriority === 'T4';
+    const newTemplate = isNewT4
+      ? ''
+      : (String(suggestion.digestSummaryTemplate ?? '').trim()
+          || String(rule.digestSummaryTemplate ?? '').trim());
+
+    if (!isNewT4 && !newTemplate) {
+      res.status(400).json({ error: 'digestSummaryTemplate is required for T1/T2/T3 rules' });
+      return;
+    }
+
+    await prisma.triageRule.update({ where: { id: rule.id }, data: { isActive: false } });
+    const newRule = await prisma.triageRule.create({
+      data: {
+        userId,
+        source: 'taught',
+        isActive: true,
+        parentId: rule.id,
+        trigger: JSON.stringify(suggestion.trigger ?? JSON.parse(rule.trigger)),
+        action: 'digest',
+        priority: newPriority,
+        categoryLabel: isNewT4 ? (String(suggestion.categoryLabel ?? '') || rule.categoryLabel) : null,
+        digestSummaryTemplate: newTemplate,
+        notes: String(suggestion.notes ?? rule.notes ?? '') || null,
+      },
+    });
+
+    res.json({ ok: true, ruleId: newRule.id });
+  } catch {
+    res.status(500).json({ error: 'Failed to accept suggestion' });
+  }
+});
+
+agentRouter.post('/rules/:ruleId/suggestion/dismiss', async (req, res) => {
+  try {
+    const userId = req.session.userId;
+    if (!userId) { res.status(401).json({ error: 'Not authenticated' }); return; }
+
+    const { ruleId } = req.params;
+    const rule = await prisma.triageRule.findUnique({ where: { id: ruleId } });
+    if (!rule || rule.userId !== userId || !rule.isActive) {
+      res.status(404).json({ error: 'Rule not found' });
+      return;
+    }
+
+    await prisma.triageRule.update({ where: { id: rule.id }, data: { pendingSuggestion: null } });
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: 'Failed to dismiss suggestion' });
   }
 });

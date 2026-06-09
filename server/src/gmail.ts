@@ -52,93 +52,6 @@ function transformMessage(msg: gmail_v1.Schema$Message): MessageDetail {
 
 export const gmailRouter = Router();
 
-// List inbox threads enriched with From/Subject/Date headers
-gmailRouter.get('/threads', async (req, res) => {
-  try {
-    const auth = getAuthenticatedClient(req);
-    const gmail = google.gmail({ version: 'v1', auth });
-
-    const maxResults = Number(req.query.maxResults ?? 50);
-    const pageToken = req.query.pageToken as string | undefined;
-    const q = (req.query.q as string | undefined) ?? 'in:inbox';
-    const undecidedOnly = req.query.undecided === 'true';
-
-    let decidedThreadIds = new Set<string>();
-    if (undecidedOnly && req.session.userId) {
-      const activeDecisions = await prisma.triageDecision.findMany({
-        where: { userId: req.session.userId, archivedAt: null },
-        select: { threadId: true },
-      });
-      decidedThreadIds = new Set(activeDecisions.map((d) => d.threadId));
-    }
-
-    // When filtering to undecided, loop through Gmail pages until we have maxResults
-    // undecided threads — a single page often yields far fewer due to decided threads.
-    const collected: gmail_v1.Schema$Thread[] = [];
-    let currentPageToken = pageToken;
-    let nextPageToken: string | undefined;
-
-    do {
-      const listResponse = await gmail.users.threads.list({
-        userId: 'me',
-        maxResults: 50,
-        ...(currentPageToken ? { pageToken: currentPageToken } : {}),
-        q,
-      });
-      nextPageToken = listResponse.data.nextPageToken ?? undefined;
-      for (const t of listResponse.data.threads ?? []) {
-        if (!decidedThreadIds.has(t.id!)) collected.push(t);
-      }
-      currentPageToken = nextPageToken;
-    } while (undecidedOnly && collected.length < maxResults && currentPageToken);
-
-    const threads = await Promise.all(
-      collected.map(async (thread) => {
-        try {
-          const detail = await gmail.users.threads.get({
-            userId: 'me',
-            id: thread.id!,
-            format: 'metadata',
-            metadataHeaders: ['From', 'Subject', 'Date'],
-          });
-
-          const messages = detail.data.messages ?? [];
-          const lastMsg = messages[messages.length - 1];
-          const headers: gmail_v1.Schema$MessagePartHeader[] =
-            lastMsg?.payload?.headers ?? [];
-          const h = makeHeaderGetter(headers);
-
-          const unreadCount = messages.filter((m) => m.labelIds?.includes('UNREAD')).length;
-
-          return {
-            id: thread.id,
-            snippet: thread.snippet ?? '',
-            subject: h('Subject') || '(no subject)',
-            sender: h('From'),
-            date: h('Date'),
-            isUnread: lastMsg?.labelIds?.includes('UNREAD') ?? false,
-            unreadCount,
-          };
-        } catch {
-          return {
-            id: thread.id,
-            snippet: thread.snippet ?? '',
-            subject: '(no subject)',
-            sender: '',
-            date: '',
-            isUnread: false,
-            unreadCount: 0,
-          };
-        }
-      })
-    );
-
-    res.json({ threads, nextPageToken });
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch threads' });
-  }
-});
-
 // Get a single thread by ID — serves from CachedMessage if fresh, falls back to Gmail API
 gmailRouter.get('/threads/:id', async (req, res) => {
   try {
@@ -192,46 +105,6 @@ gmailRouter.get('/threads/:id', async (req, res) => {
   }
 });
 
-// Archive a thread (remove INBOX label)
-gmailRouter.post('/threads/:id/archive', async (req, res) => {
-  try {
-    const auth = getAuthenticatedClient(req);
-    const gmail = google.gmail({ version: 'v1', auth });
-
-    await gmail.users.threads.modify({
-      userId: 'me',
-      id: req.params.id,
-      requestBody: {
-        removeLabelIds: ['INBOX'],
-      },
-    });
-
-    res.json({ ok: true });
-  } catch {
-    res.status(500).json({ error: 'Failed to archive thread' });
-  }
-});
-
-// Mark a thread as read
-gmailRouter.post('/threads/:id/read', async (req, res) => {
-  try {
-    const auth = getAuthenticatedClient(req);
-    const gmail = google.gmail({ version: 'v1', auth });
-
-    await gmail.users.threads.modify({
-      userId: 'me',
-      id: req.params.id,
-      requestBody: {
-        removeLabelIds: ['UNREAD'],
-      },
-    });
-
-    res.json({ ok: true });
-  } catch {
-    res.status(500).json({ error: 'Failed to mark thread as read' });
-  }
-});
-
 // List active triage decisions grouped by priority, with thread metadata
 gmailRouter.get('/decisions', async (req, res) => {
   try {
@@ -272,7 +145,7 @@ gmailRouter.get('/decisions', async (req, res) => {
       thread: { subject: string; sender: string; date: string; snippet: string; unreadCount: number; messageCount: number };
     };
 
-    const grouped: Record<string, DecisionWithThread[]> = { T1: [], T2: [], T3: [], T4: [] };
+    const grouped: Record<string, DecisionWithThread[]> = { T1: [], T2: [], T3: [], T4: [], T5: [] };
 
     for (const d of decisions) {
       const cache = cacheMap.get(d.threadId);
@@ -375,14 +248,25 @@ gmailRouter.post('/decisions/:id/followup', async (req, res) => {
     const userId = req.session.userId;
     if (!userId) { res.status(401).json({ error: 'Not authenticated' }); return; }
 
+    const { note } = (req.body ?? {}) as { note?: string };
+
     const decision = await prisma.triageDecision.findUnique({ where: { id: req.params.id } });
     if (!decision || decision.userId !== userId) {
       res.status(404).json({ error: 'Decision not found' }); return;
     }
 
+    // A followup note records why the user is following up; it replaces the
+    // generic T3/T4 summary on the resulting T2 decision. Omit when blank.
+    const trimmedNote = typeof note === 'string' ? note.trim() : '';
     await prisma.triageDecision.update({
       where: { id: decision.id },
-      data: { wasCorrect: true, confirmedByUser: true, userFlagged: true, priority: 'T2' },
+      data: {
+        wasCorrect: true,
+        confirmedByUser: true,
+        userFlagged: true,
+        priority: 'T2',
+        ...(trimmedNote ? { digestSummary: trimmedNote } : {}),
+      },
     });
 
     const auth = getAuthenticatedClient(req);

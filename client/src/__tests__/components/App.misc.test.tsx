@@ -2,31 +2,43 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../../App';
-import type { Thread } from '../../api';
+import type { DecisionWithThread } from '../../api';
 
 vi.mock('../../api', () => ({
   api: {
     getStatus: vi.fn(),
     getUnreadCount: vi.fn(),
-    getThreads: vi.fn(),
     getDecisions: vi.fn(),
     getThread: vi.fn(),
     teachMessage: vi.fn(),
     saveRule: vi.fn(),
     applyRule: vi.fn(),
+    misclassifiedDecision: vi.fn(),
+    getRulesWithSuggestions: vi.fn(),
   },
 }));
 
 import { api } from '../../api';
 const mockApi = vi.mocked(api);
 
-const EMPTY = { T1: [], T2: [], T3: [], T4: [] };
+const EMPTY = { T1: [], T2: [], T3: [], T4: [], T5: [] };
 
-function thread(id: string, subject: string): Thread {
+function t5Decision(subject: string): DecisionWithThread {
   return {
-    id, snippet: 'snippet', subject, sender: 'Acme <billing@acme.com>',
-    date: '2024-01-01T00:00:00Z', isUnread: true, unreadCount: 1,
+    decisionId: 'd1', threadId: 't1', priority: 'T5', categoryLabel: null,
+    digestSummary: 'Unclassified', decidedAt: '2024-01-01T00:00:00Z',
+    confirmedByUser: false, userFlagged: false,
+    thread: { subject, sender: 'Acme <billing@acme.com>', date: '2024-01-01T00:00:00Z', snippet: 'snippet', unreadCount: 1, messageCount: 1 },
   };
+}
+
+// Open the T5 panel, click the item's Teach button, and pick a tier — which
+// opens the TeachPanel.
+async function teachT5Item(user: ReturnType<typeof userEvent.setup>) {
+  await waitFor(() => expect(screen.getByText('T5 Unclassified')).toBeInTheDocument());
+  await user.click(screen.getByText('T5 Unclassified'));
+  await user.click(screen.getByText('Teach'));
+  await user.click(screen.getByLabelText('Move to T3'));
 }
 
 const PROPOSAL_RESPONSE = `Proposed.
@@ -38,9 +50,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockApi.getStatus.mockResolvedValue({ authenticated: true });
   mockApi.getUnreadCount.mockResolvedValue({ count: 0 });
-  mockApi.getThreads.mockResolvedValue({ threads: [] });
   mockApi.getDecisions.mockResolvedValue(EMPTY);
+  mockApi.getRulesWithSuggestions.mockResolvedValue([]);
   mockApi.getThread.mockResolvedValue({ id: 'x', messages: [] });
+  mockApi.misclassifiedDecision.mockResolvedValue({ ok: true, threadId: 't1' });
 });
 
 afterEach(() => {
@@ -77,34 +90,15 @@ describe('favicon badge', () => {
   });
 });
 
-describe('inbox pagination', () => {
-  it('loads the next page of threads when "Load More" is clicked', async () => {
-    const user = userEvent.setup();
-    mockApi.getThreads
-      .mockResolvedValueOnce({ threads: [thread('t1', 'First page')], nextPageToken: 'tok' })
-      .mockResolvedValueOnce({ threads: [thread('t2', 'Second page')], nextPageToken: undefined });
-    render(<App />);
-    await waitFor(() => expect(screen.getByText('First page')).toBeInTheDocument());
-
-    await user.click(screen.getByText('LOAD MORE…'));
-
-    await waitFor(() => expect(screen.getByText('Second page')).toBeInTheDocument());
-    expect(mockApi.getThreads).toHaveBeenLastCalledWith(
-      expect.objectContaining({ pageToken: 'tok', undecided: true }),
-    );
-  });
-});
-
 describe('TeachPanel revise and error paths', () => {
   it('clicking Revise sends a revision request to the agent', async () => {
     const user = userEvent.setup();
-    mockApi.getThreads.mockResolvedValue({ threads: [thread('t1', 'Invoice')] });
+    mockApi.getDecisions.mockResolvedValue({ ...EMPTY, T5: [t5Decision('Invoice')] });
     mockApi.teachMessage
       .mockResolvedValueOnce({ response: PROPOSAL_RESPONSE })
       .mockResolvedValueOnce({ response: 'Revised version coming up.' });
     render(<App />);
-    await waitFor(() => expect(screen.getByText('Invoice')).toBeInTheDocument());
-    await user.click(screen.getByText('Teach'));
+    await teachT5Item(user);
     await waitFor(() => expect(screen.getByText('Revise')).toBeInTheDocument());
 
     await user.click(screen.getByText('Revise'));
@@ -118,12 +112,11 @@ describe('TeachPanel revise and error paths', () => {
 
   it('shows an error and keeps the proposal actionable when saving the rule fails', async () => {
     const user = userEvent.setup();
-    mockApi.getThreads.mockResolvedValue({ threads: [thread('t1', 'Invoice')] });
+    mockApi.getDecisions.mockResolvedValue({ ...EMPTY, T5: [t5Decision('Invoice')] });
     mockApi.teachMessage.mockResolvedValueOnce({ response: PROPOSAL_RESPONSE });
     mockApi.saveRule.mockRejectedValueOnce(new Error('Save failed'));
     render(<App />);
-    await waitFor(() => expect(screen.getByText('Invoice')).toBeInTheDocument());
-    await user.click(screen.getByText('Teach'));
+    await teachT5Item(user);
     await waitFor(() => expect(screen.getByText('Confirm rule')).toBeInTheDocument());
 
     await user.click(screen.getByText('Confirm rule'));

@@ -5,7 +5,7 @@ import { parseSender, formatDate } from '../utils/text';
 import { buildGroups } from '../utils/decisions';
 
 interface DigestPanelProps {
-  tier: 'T1' | 'T2' | 'T3' | 'T4';
+  tier: 'T1' | 'T2' | 'T3' | 'T4' | 'T5';
   label: string;
   accent: string;
   items: DecisionWithThread[];
@@ -13,35 +13,43 @@ interface DigestPanelProps {
   onToggle: () => void;
   onConfirm: (decisionId: string) => void;
   onDone: (decisionId: string) => void;
-  onFollowup: (decisionId: string) => void;
-  onMisclassified: (decisionId: string, threadId: string) => void;
+  onFollowup: (decisionId: string, note?: string) => void;
+  onOpenTeach: (item: DecisionWithThread, opts: { correctTier: string; fixSummary?: boolean; correctCategory?: string }) => void;
   onConfirmAll: (decisionIds: string[], tier: string) => void;
-  onViewThread: (threadId: string) => void;
 }
+
+const TIERS = ['T1', 'T2', 'T3', 'T4'] as const;
 
 function DigestItemRow({
   item,
   expanded,
   isT12,
   isT4,
+  isT5,
   onToggle,
   onDone,
   onConfirm,
   onFollowup,
-  onMisclassified,
+  onOpenTeach,
 }: {
   item: DecisionWithThread;
   expanded: boolean;
   isT12: boolean;
   isT4: boolean;
+  isT5: boolean;
   onToggle: () => void;
   onDone: (decisionId: string) => void;
   onConfirm: (decisionId: string) => void;
-  onFollowup: (decisionId: string) => void;
-  onMisclassified: (decisionId: string, threadId: string) => void;
+  onFollowup: (decisionId: string, note?: string) => void;
+  onOpenTeach: (item: DecisionWithThread, opts: { correctTier: string; fixSummary?: boolean; correctCategory?: string }) => void;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const prevExpanded = useRef(expanded);
+  const [followupMode, setFollowupMode] = useState(false);
+  const [note, setNote] = useState('');
+  const [tierPickerOpen, setTierPickerOpen] = useState(false);
+  const [categoryInputMode, setCategoryInputMode] = useState(false);
+  const [categoryDraft, setCategoryDraft] = useState(item.categoryLabel ?? '');
 
   useEffect(() => {
     if (prevExpanded.current === expanded) return;
@@ -50,6 +58,33 @@ function DigestItemRow({
   }, [expanded]);
 
   const confirmed = item.confirmedByUser;
+
+  function openFollowup() {
+    setNote(item.thread.subject);
+    setFollowupMode(true);
+  }
+
+  function confirmFollowup() {
+    onFollowup(item.decisionId, note);
+    setFollowupMode(false);
+  }
+
+  function pickTier(correctTier: string) {
+    onOpenTeach(item, { correctTier });
+    setTierPickerOpen(false);
+  }
+
+  function pickSummaryFix() {
+    onOpenTeach(item, { correctTier: item.priority, fixSummary: true });
+    setTierPickerOpen(false);
+  }
+
+  function pickCategoryFix() {
+    if (!categoryDraft.trim()) return;
+    onOpenTeach(item, { correctTier: item.priority, correctCategory: categoryDraft.trim() });
+    setTierPickerOpen(false);
+    setCategoryInputMode(false);
+  }
 
   return (
     <div ref={rowRef} className={confirmed ? 'opacity-50' : ''}>
@@ -77,7 +112,7 @@ function DigestItemRow({
               {formatDate(item.thread.date)}
             </span>
           </div>
-          {isT4 ? (
+          {isT4 || isT5 ? (
             <>
               <div className="text-sm truncate text-gray-400 mt-0.5">{item.thread.subject}</div>
               {item.thread.snippet && (
@@ -94,7 +129,14 @@ function DigestItemRow({
           className="flex gap-1 shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
         >
-          {isT12 ? (
+          {isT5 ? (
+            <button
+              onClick={() => setTierPickerOpen(true)}
+              className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors"
+            >
+              Teach
+            </button>
+          ) : isT12 ? (
             item.userFlagged ? (
               <button
                 onClick={() => onDone(item.decisionId)}
@@ -119,7 +161,7 @@ function DigestItemRow({
                   Done
                 </button>
                 <button
-                  onClick={() => onMisclassified(item.decisionId, item.threadId)}
+                  onClick={() => setTierPickerOpen(true)}
                   className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-red-400 hover:border-red-700 transition-colors"
                 >
                   Wrong
@@ -135,13 +177,13 @@ function DigestItemRow({
                 Confirm
               </button>
               <button
-                onClick={() => onFollowup(item.decisionId)}
+                onClick={openFollowup}
                 className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-orange-400 hover:border-orange-500 transition-colors"
               >
                 Followup
               </button>
               <button
-                onClick={() => onMisclassified(item.decisionId, item.threadId)}
+                onClick={() => setTierPickerOpen(true)}
                 className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-red-400 hover:border-red-700 transition-colors"
               >
                 Wrong
@@ -151,6 +193,118 @@ function DigestItemRow({
         </div>
       </div>
       </div>
+      {tierPickerOpen && (
+        <div
+          className="flex items-center gap-2 px-4 py-2 border-b border-gray-800/60 bg-gray-900/30"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {categoryInputMode ? (
+            <>
+              <span className="text-xs text-gray-500 shrink-0">Correct category:</span>
+              <input
+                autoFocus
+                type="text"
+                value={categoryDraft}
+                onChange={(e) => setCategoryDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && categoryDraft.trim()) pickCategoryFix();
+                  if (e.key === 'Escape') setCategoryInputMode(false);
+                }}
+                aria-label="Correct category"
+                className="flex-1 min-w-0 text-xs bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500"
+              />
+              <button
+                onClick={pickCategoryFix}
+                disabled={!categoryDraft.trim()}
+                className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-blue-400 hover:border-blue-700 transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Confirm
+              </button>
+              <button
+                onClick={() => setCategoryInputMode(false)}
+                aria-label="Cancel category input"
+                className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors shrink-0"
+              >
+                ✕
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="text-xs text-gray-500 shrink-0">Correct tier:</span>
+              {TIERS.map((t) => {
+                const isCurrent = t === item.priority;
+                return (
+                  <button
+                    key={t}
+                    onClick={() => pickTier(t)}
+                    disabled={isCurrent}
+                    aria-label={isCurrent ? `${t} (current — incorrect)` : `Move to ${t}`}
+                    title={isCurrent ? 'Current tier (marked incorrect)' : undefined}
+                    className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                      isCurrent
+                        ? 'border-red-700/50 text-red-400/60 line-through cursor-not-allowed'
+                        : 'border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                );
+              })}
+              {!isT5 && (
+                <>
+                  <span className="text-xs text-gray-700 shrink-0 mx-1" aria-hidden="true">|</span>
+                  <button
+                    onClick={isT4 ? () => setCategoryInputMode(true) : pickSummaryFix}
+                    aria-label={isT4 ? 'Fix category label' : 'Fix digest summary'}
+                    className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-blue-400 hover:border-blue-700 transition-colors shrink-0"
+                  >
+                    {isT4 ? 'Fix category' : 'Fix summary'}
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => setTierPickerOpen(false)}
+                aria-label="Cancel tier picker"
+                className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors shrink-0 ml-auto"
+              >
+                ✕
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {followupMode && (
+        <div
+          className="flex items-center gap-2 px-4 py-2 border-b border-gray-800/60 bg-gray-900/30"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') confirmFollowup();
+              if (e.key === 'Escape') setFollowupMode(false);
+            }}
+            autoFocus
+            placeholder="Why are you following up?"
+            aria-label="Followup note"
+            className="flex-1 min-w-0 text-xs bg-gray-950 border border-gray-700 rounded px-2 py-1 text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500"
+          />
+          <button
+            onClick={confirmFollowup}
+            className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-orange-400 hover:border-orange-500 transition-colors shrink-0"
+          >
+            Confirm
+          </button>
+          <button
+            onClick={() => setFollowupMode(false)}
+            className="text-xs px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors shrink-0"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
       {expanded && (
         <div className="bg-gray-950/40">
           <ThreadDetail threadId={item.threadId} />
@@ -167,11 +321,10 @@ function DigestGroupPanel({
   onToggle,
   expandedDecisionId,
   setExpandedDecisionId,
-  onViewThread,
   onDone,
   onConfirm,
   onFollowup,
-  onMisclassified,
+  onOpenTeach,
   onConfirmAll,
 }: {
   groupLabel: string;
@@ -180,11 +333,10 @@ function DigestGroupPanel({
   onToggle: () => void;
   expandedDecisionId: string | null;
   setExpandedDecisionId: (id: string | null) => void;
-  onViewThread: (threadId: string) => void;
   onDone: (id: string) => void;
   onConfirm: (id: string) => void;
-  onFollowup: (id: string) => void;
-  onMisclassified: (id: string, threadId: string) => void;
+  onFollowup: (id: string, note?: string) => void;
+  onOpenTeach: (item: DecisionWithThread, opts: { correctTier: string; fixSummary?: boolean; correctCategory?: string }) => void;
   onConfirmAll: (items: DecisionWithThread[]) => void;
 }) {
   const groupRef = useRef<HTMLDivElement>(null);
@@ -219,15 +371,15 @@ function DigestGroupPanel({
                 expanded={expandedDecisionId === item.decisionId}
                 isT12={false}
                 isT4={true}
+                isT5={false}
                 onToggle={() => {
                   const opening = expandedDecisionId !== item.decisionId;
                   setExpandedDecisionId(opening ? item.decisionId : null);
-                  if (opening) onViewThread(item.threadId);
                 }}
                 onDone={onDone}
                 onConfirm={onConfirm}
                 onFollowup={onFollowup}
-                onMisclassified={onMisclassified}
+                onOpenTeach={onOpenTeach}
               />
             ))}
           </div>
@@ -255,12 +407,12 @@ export function DigestPanel({
   onConfirm,
   onDone,
   onFollowup,
-  onMisclassified,
+  onOpenTeach,
   onConfirmAll,
-  onViewThread,
 }: DigestPanelProps) {
   const isT12 = tier === 'T1' || tier === 'T2';
   const isT4 = tier === 'T4';
+  const isT5 = tier === 'T5';
   const [snapshotItems, setSnapshotItems] = useState<DecisionWithThread[]>([]);
   const [expandedDecisionId, setExpandedDecisionId] = useState<string | null>(null);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
@@ -281,6 +433,19 @@ export function DigestPanel({
       snapshotTaken.current = true;
       setSnapshotItems([...items]);
     }
+  }, [isOpen, items]);
+
+  // Reconcile the open snapshot with incoming items: drop any snapshot entry
+  // whose decision no longer exists (archived elsewhere, or after a re-teach).
+  // Removals only — never adds or reorders, so stable ordering is preserved.
+  useEffect(() => {
+    if (!isOpen) return;
+    const liveIds = new Set(items.map((i) => i.decisionId));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- functional updater reads prev state; no stale-closure risk
+    setSnapshotItems((prev) => {
+      const pruned = prev.filter((i) => liveIds.has(i.decisionId));
+      return pruned.length === prev.length ? prev : pruned;
+    });
   }, [isOpen, items]);
 
   function handleToggle() {
@@ -316,14 +481,9 @@ export function DigestPanel({
     onDone(decisionId);
   }
 
-  function handleFollowup(decisionId: string) {
+  function handleFollowup(decisionId: string, note?: string) {
     removeFromSnapshot(decisionId);
-    onFollowup(decisionId);
-  }
-
-  function handleMisclassified(decisionId: string, threadId: string) {
-    removeFromSnapshot(decisionId);
-    onMisclassified(decisionId, threadId);
+    onFollowup(decisionId, note);
   }
 
   function handleConfirmAll() {
@@ -385,11 +545,10 @@ export function DigestPanel({
                   onToggle={() => toggleGroupCollapsed(groupLabel)}
                   expandedDecisionId={expandedDecisionId}
                   setExpandedDecisionId={setExpandedDecisionId}
-                  onViewThread={onViewThread}
                   onDone={handleDone}
                   onConfirm={handleConfirm}
                   onFollowup={handleFollowup}
-                  onMisclassified={handleMisclassified}
+                  onOpenTeach={onOpenTeach}
                   onConfirmAll={handleGroupConfirmAll}
                 />
               ))}
@@ -404,26 +563,28 @@ export function DigestPanel({
                     expanded={expandedDecisionId === item.decisionId}
                     isT12={isT12}
                     isT4={false}
+                    isT5={isT5}
                     onToggle={() => {
                       const opening = expandedDecisionId !== item.decisionId;
                       setExpandedDecisionId(opening ? item.decisionId : null);
-                      if (opening) onViewThread(item.threadId);
                     }}
                     onDone={handleDone}
                     onConfirm={handleConfirm}
                     onFollowup={handleFollowup}
-                    onMisclassified={handleMisclassified}
+                    onOpenTeach={onOpenTeach}
                   />
                 ))}
               </div>
-              <div className="px-4 py-2 border-t border-gray-800/60 flex justify-end">
-                <button
-                  onClick={handleConfirmAll}
-                  className="text-xs px-3 py-1 rounded border border-gray-700 text-gray-400 hover:text-green-400 hover:border-green-700 transition-colors"
-                >
-                  Confirm all
-                </button>
-              </div>
+              {!isT5 && (
+                <div className="px-4 py-2 border-t border-gray-800/60 flex justify-end">
+                  <button
+                    onClick={handleConfirmAll}
+                    className="text-xs px-3 py-1 rounded border border-gray-700 text-gray-400 hover:text-green-400 hover:border-green-700 transition-colors"
+                  >
+                    Confirm all
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
