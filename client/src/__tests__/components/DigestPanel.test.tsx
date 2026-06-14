@@ -343,9 +343,6 @@ describe('DigestPanel actions', () => {
     const input = screen.getByLabelText('Correct category');
     await user.clear(input);
     await user.type(input, 'Finance');
-    const confirmBtn = input.closest('div')!.querySelector('button[disabled]') === null
-      ? screen.getAllByText('Confirm').find((el) => el.closest('div')?.contains(input))
-      : null;
     // Use Enter key to confirm
     await user.keyboard('{Enter}');
     expect(props.onOpenTeach).toHaveBeenCalledWith(
