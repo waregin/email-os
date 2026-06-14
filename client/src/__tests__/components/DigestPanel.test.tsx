@@ -369,7 +369,7 @@ describe('DigestPanel actions', () => {
 
   it('T5 picker does not show Fix summary or Fix category', async () => {
     const user = userEvent.setup();
-    render(<DigestPanel tier="T5" label="T5 Unclassified" items={[makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T5', digestSummary: 'should-not-show', thread: { subject: 'Mystery', sender: 'a@b.com', date: '2024-01-01T00:00:00Z', snippet: 'snip', unreadCount: 0, messageCount: 1 } })]} isOpen={true} {...defaultProps()} />);
+    render(<DigestPanel tier="T5" items={[makeItem({ decisionId: 'd1', threadId: 't1', priority: 'T5', digestSummary: 'should-not-show', thread: { subject: 'Mystery', sender: 'a@b.com', date: '2024-01-01T00:00:00Z', snippet: 'snip', unreadCount: 0, messageCount: 1 } })]} isOpen={true} {...defaultProps()} label="T5 Unclassified" />);
     await user.click(screen.getByText('Teach'));
     expect(screen.queryByLabelText('Fix digest summary')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Fix category label')).not.toBeInTheDocument();
@@ -488,7 +488,7 @@ describe('DigestPanel T5 Unclassified', () => {
   }
 
   it('shows subject and snippet (not digestSummary), only a Teach button, and no Confirm all', () => {
-    render(<DigestPanel tier="T5" label="T5 Unclassified" items={[t5Item()]} isOpen={true} {...defaultProps()} />);
+    render(<DigestPanel tier="T5" items={[t5Item()]} isOpen={true} {...defaultProps()} label="T5 Unclassified" />);
     expect(screen.getByText('Mystery email')).toBeInTheDocument();
     expect(screen.getByText('mystery snippet')).toBeInTheDocument();
     expect(screen.queryByText('should-not-show')).not.toBeInTheDocument();
@@ -502,7 +502,7 @@ describe('DigestPanel T5 Unclassified', () => {
 
   it('Teach opens the tier picker with all four tiers selectable (none marked current)', async () => {
     const user = userEvent.setup();
-    render(<DigestPanel tier="T5" label="T5 Unclassified" items={[t5Item()]} isOpen={true} {...defaultProps()} />);
+    render(<DigestPanel tier="T5" items={[t5Item()]} isOpen={true} {...defaultProps()} label="T5 Unclassified" />);
     await user.click(screen.getByText('Teach'));
     for (const tier of ['T1', 'T2', 'T3', 'T4']) {
       expect(screen.getByLabelText(`Move to ${tier}`)).toBeInTheDocument();
@@ -512,7 +512,7 @@ describe('DigestPanel T5 Unclassified', () => {
   it('picking a tier from the Teach picker calls onOpenTeach with that tier', async () => {
     const user = userEvent.setup();
     const props = defaultProps();
-    render(<DigestPanel tier="T5" label="T5 Unclassified" items={[t5Item()]} isOpen={true} {...props} />);
+    render(<DigestPanel tier="T5" items={[t5Item()]} isOpen={true} {...props} label="T5 Unclassified" />);
     await user.click(screen.getByText('Teach'));
     await user.click(screen.getByLabelText('Move to T2'));
     expect(props.onOpenTeach).toHaveBeenCalledWith(
