@@ -67,6 +67,10 @@ beforeEach(async () => {
   mockBatchesResults.mockReset();
   process.env.ANTHROPIC_API_KEY = ANTHROPIC_API_KEY;
   process.env.ANTHROPIC_MODEL = ANTHROPIC_MODEL;
+  // Keep the batch poll loop near-instant so polling tests run on real timers
+  // (fake timers would stall the pg driver's async socket I/O).
+  process.env.HEALTH_CHECK_POLL_INTERVAL_MS = '1';
+  delete process.env.HEALTH_CHECK_MAX_POLLS;
   const user = await createTestUser();
   userId = user.id;
 });
@@ -367,12 +371,7 @@ describe('runHealthCheck', () => {
       })(),
     );
 
-    // Need to advance the timer that fires between polls
-    vi.useFakeTimers();
-    const promise = runHealthCheck(userId);
-    await vi.runAllTimersAsync();
-    await promise;
-    vi.useRealTimers();
+    await runHealthCheck(userId);
 
     expect(mockBatchesRetrieve).toHaveBeenCalledTimes(2);
     const updated = await prisma.triageRule.findUnique({ where: { id: rule.id } });
@@ -391,14 +390,12 @@ describe('runHealthCheck', () => {
 
     mockBatchesCreate.mockResolvedValue({ id: 'batch_never', processing_status: 'in_progress' });
     mockBatchesRetrieve.mockResolvedValue({ processing_status: 'in_progress' });
+    process.env.HEALTH_CHECK_MAX_POLLS = '3';
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.useFakeTimers();
-    const promise = runHealthCheck(userId);
-    await vi.runAllTimersAsync();
-    await promise;
-    vi.useRealTimers();
+    await runHealthCheck(userId);
 
+    expect(mockBatchesRetrieve).toHaveBeenCalledTimes(3);
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('did not complete'));
     consoleSpy.mockRestore();
     expect(mockBatchesResults).not.toHaveBeenCalled();
