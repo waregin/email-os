@@ -10,9 +10,13 @@ const PORT = process.env.PORT ?? 3001;
 app.listen(PORT, () => {
   console.log(`Email OS server running on http://localhost:${PORT}`);
 
-  prisma.user.findUnique({ where: { email: 'waregin88@gmail.com' } })
-    .then(user => {
-      if (user?.accessToken) startScheduler(user.id);
+  // Resume background triage for every authenticated user, not just one.
+  // New sign-ins start their own scheduler in the OAuth callback (auth.ts);
+  // this covers users who authenticated before the most recent restart.
+  prisma.user.findMany({ where: { accessToken: { not: null } } })
+    .then(users => {
+      for (const user of users) startScheduler(user.id);
+      if (users.length > 0) console.log(`Started schedulers for ${users.length} user(s)`);
     })
-    .catch(e => console.error('Failed to start scheduler:', e));
+    .catch(e => console.error('Failed to start schedulers:', e));
 });
