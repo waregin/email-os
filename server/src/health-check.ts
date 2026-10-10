@@ -1,8 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from './db';
 
-const POLL_INTERVAL_MS = 10_000;
-const MAX_POLLS = 60;
+const DEFAULT_POLL_INTERVAL_MS = 10_000;
+const DEFAULT_MAX_POLLS = 60;
 
 const HEALTH_SYSTEM_PROMPT = `You are analyzing an email triage rule that has a high user rejection rate. Suggest a more precise version that reduces false positives.
 
@@ -83,19 +83,22 @@ export async function runHealthCheck(userId: string): Promise<void> {
 
   const batch = await anthropic.messages.batches.create({ requests: batchRequests });
 
+  const pollIntervalMs = Number(process.env.HEALTH_CHECK_POLL_INTERVAL_MS) || DEFAULT_POLL_INTERVAL_MS;
+  const maxPolls = Number(process.env.HEALTH_CHECK_MAX_POLLS) || DEFAULT_MAX_POLLS;
+
   let polls = 0;
   let batchStatus = batch.processing_status;
-  while (batchStatus !== 'ended' && polls < MAX_POLLS) {
+  while (batchStatus !== 'ended' && polls < maxPolls) {
     const updated = await anthropic.messages.batches.retrieve(batch.id);
     batchStatus = updated.processing_status;
     polls++;
     if (batchStatus !== 'ended') {
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
     }
   }
 
   if (batchStatus !== 'ended') {
-    console.error(`Health check batch ${batch.id} did not complete after ${MAX_POLLS} polls`);
+    console.error(`Health check batch ${batch.id} did not complete after ${maxPolls} polls`);
     return;
   }
 
